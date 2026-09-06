@@ -73,11 +73,36 @@ The `<source>` argument of `add` accepts:
 | Format              | Example                                                          |
 | ------------------- | ---------------------------------------------------------------- |
 | Local path          | `./my-skill`, `/abs/path/skill`                                  |
-| GitHub shorthand    | `owner/repo`, `owner/repo@skill`, `owner/repo/subpath`           |
+| GitHub shorthand    | `owner/repo`                                                     |
 | GitHub / GitLab URL | `https://github.com/owner/repo`, `https://gitlab.com/group/repo` |
 | SSH / git URL       | `git@github.com:owner/repo.git`                                  |
-| HTTPS (well-known)  | `https://example.com/skills` (discovery → download fallback)     |
-| HTTPS (download)    | `.../skill.zip`, `.../skill.tar.gz`, raw `SKILL.md`              |
+| HTTPS download      | `https://example.com/skills.zip`, `.../skills.tar.gz`, raw `SKILL.md` |
+
+Common ways to narrow a GitHub source (GitLab works the same, with
+`/-/tree/...` instead of `/tree/...`):
+
+| You want                            | Write                                                 |
+| ----------------------------------- | ----------------------------------------------------- |
+| Everything in the repo              | `owner/repo`                                          |
+| Only one skill                      | `owner/repo@pdf` (same as `--skill pdf`)              |
+| Only a subdirectory                 | `owner/repo/skills/pdf`                               |
+| A branch, tag, or commit            | `https://github.com/owner/repo/tree/v1.2`             |
+| A subdirectory at a specific ref    | `https://github.com/owner/repo/tree/v1.2/skills/pdf`  |
+| One skill from a subdirectory       | `agents-skills add owner/repo/skills/pdf --skill pdf` |
+
+Rules for Git sources:
+
+- A ref (branch / tag / commit SHA) can only be expressed in the URL:
+  `/tree/<ref>[/<path>]` for GitHub, `/-/tree/<ref>[/<path>]` for GitLab
+  (including self-hosted instances). The shorthand, plain repo URLs, and
+  SSH / git URLs have no ref syntax and always resolve to the default branch.
+- The shorthand cannot combine a subdirectory with `@skill` — use `--skill`
+  instead. GitHub / GitLab URLs without `/tree/` (e.g.
+  `https://github.com/owner/repo/skills/pdf`) and `/blob/` file URLs are
+  rejected with an error instead of silently installing the wrong scope.
+
+HTTPS sources are downloaded and extracted directly (zip / tar / tar.gz
+archive, or a single file such as a raw `SKILL.md`).
 
 Within a repository, skills are discovered in priority-ordered container
 directories (`skills/`, `.curated/`, `.experimental/`, `.system/`); shallower

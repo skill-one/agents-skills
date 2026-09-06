@@ -61,17 +61,38 @@ agents-skills enable pdf                           # 重新启用（disable 的�
 
 `add` 的 `<source>` 参数支持：
 
-| 格式                | 示例                                                             |
-| ------------------- | ---------------------------------------------------------------- |
-| 本地路径            | `./my-skill`, `/abs/path/skill`                                  |
-| GitHub 简写         | `owner/repo`, `owner/repo@skill`, `owner/repo/subpath`           |
-| GitHub / GitLab URL | `https://github.com/owner/repo`, `https://gitlab.com/group/repo` |
-| SSH / git URL       | `git@github.com:owner/repo.git`                                  |
-| HTTPS（well-known） | `https://example.com/skills`（发现 → 下载兜底）                  |
-| HTTPS（下载）       | `.../skill.zip`, `.../skill.tar.gz`, 原始 `SKILL.md`             |
+| 格式                  | 示例                                                                   |
+| ------------------- | -------------------------------------------------------------------- |
+| 本地路径                | `./my-skill`, `/abs/path/skill`                                      |
+| GitHub 简写           | `owner/repo`                                                         |
+| GitHub / GitLab URL | `https://github.com/owner/repo`, `https://gitlab.com/group/repo`     |
+| SSH / git URL       | `git@github.com:owner/repo.git`                                      |
+| HTTPS 下载            | `https://example.com/skills.zip`, `.../skills.tar.gz`, 原始 `SKILL.md` |
 
-仓库内按优先级容器目录发现技能（`skills/`、`.curated/`、`.experimental/`、
-`.system/`），浅层遮蔽深层。
+GitHub 来源的常用写法(GitLab 相同,只是把 `/tree/...` 换成 `/-/tree/...`):
+
+| 想安装的内容          | 写法                                                    |
+| --------------- | ----------------------------------------------------- |
+| 仓库中的全部技能        | `owner/repo`                                          |
+| 只装一个技能          | `owner/repo@pdf`(等价于 `--skill pdf`)                   |
+| 只装某个子目录         | `owner/repo/skills/pdf`                               |
+| 指定分支、标签或 commit | `https://github.com/owner/repo/tree/v1.2`             |
+| 指定 ref 下的某个子目录  | `https://github.com/owner/repo/tree/v1.2/skills/pdf`  |
+| 子目录中的一个技能       | `agents-skills add owner/repo/skills/pdf --skill pdf` |
+
+Git 来源的规则:
+
+- ref(分支 / 标签 / commit SHA)只能写在 URL 里:GitHub 用
+  `/tree/<ref>[/<path>]`,GitLab(含自建实例)用 `/-/tree/<ref>[/<path>]`。
+  简写、纯仓库 URL 以及 SSH / git URL 没有 ref 语法,始终解析到默认分支。
+- 简写不能同时携带子目录和 `@skill`,请改用 `--skill`。不带 `/tree/` 的 GitHub /
+  GitLab URL(如 `https://github.com/owner/repo/skills/pdf`)和 `/blob/`
+  文件 URL 会被显式报错拒绝,而不是静默装错范围。
+
+HTTPS 来源直接下载并解压(zip / tar / tar.gz 压缩包,或单个文件如原始 `SKILL.md`)。
+
+仓库内按优先级容器目录发现技能(`skills/`、`.curated/`、`.experimental/`、
+`.system/`),浅层遮蔽深层。
 
 ### 安装位置
 
@@ -83,17 +104,15 @@ agents-skills enable pdf                           # 重新启用（disable 的�
 
 ## 命令速查表
 
-| 命令      | 说明                              |
-| --------- | --------------------------------- |
-| `add`     | 从来源安装技能包                  |
-| `remove`  | 移除已安装技能                    |
-| `list`    | 列出已安装技能                    |
-| `update`  | 将技能更新到最新版本              |
-| `disable` | 禁用已安装技能                    |
-| `enable`  | 重新启用已禁用的技能              |
+| 命令        | 说明                    |
+| --------- | --------------------- |
+| `add`     | 从来源安装技能包              |
+| `remove`  | 移除已安装技能               |
+| `list`    | 列出已安装技能               |
+| `update`  | 将技能更新到最新版本            |
+| `disable` | 禁用已安装技能               |
+| `enable`  | 重新启用已禁用的技能            |
 | `agent`   | 链接/解除链接/查看 agent 链接状态 |
-
-命令不设别名（极简接口，只认全名）。
 
 > 完整命令行参考见 [docs/CLI.zh-CN.md](docs/CLI.zh-CN.md)；库使用者见
 > [docs/LIBRARY.zh-CN.md](docs/LIBRARY.zh-CN.md)；项目开发者见
