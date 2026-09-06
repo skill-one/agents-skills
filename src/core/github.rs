@@ -1,5 +1,6 @@
-//! GitHub API fast path: fetch only the directory of a `@skill`-selected skill
-//! instead of the whole repository archive.
+//! GitHub API fast path: fetch only what is needed instead of the whole
+//! repository archive — the directory of a `@skill`-selected skill, or every
+//! file under a subpath.
 //!
 //! The HTTP client is injected as a `get` closure so the whole selection logic is
 //! unit-testable offline; production uses a plain ureq GET.
@@ -27,34 +28,44 @@ pub fn fetch_skill_via_api(
     fetch_skill_via_api_with(parsed, skill_name, include_internal, &http_get)
 }
 
-/// Real HTTP GET used by default (injectable for tests).
+/// Fetch only the files under `parsed.subpath` into a fresh temp dir, keeping
+/// their original relative paths so discovery can run on the root as usual.
 ///
-/// Uses the shared proxy-aware agent, honors `GITHUB_TOKEN` to raise the API rate
-/// limit when set, and retries transient failures with backoff.
-fn http_get(url: &str) -> Result<Vec<u8>> {
-    let attempt = || -> Result<Vec<u8>> {
-        let mut req = crate::core::fetch::agent()
-            .get(url)
-            .set("User-Agent", "agents-skills");
-        if let Ok(tok) = std::env::var("GITHUB_TOKEN")
-            && !tok.is_empty()
-        {
-            req = req.set("Authorization", &format!("Bearer {tok}"));
-        }
-        let resp = req.call()?;
-        let mut buf = Vec::new();
-        resp.into_reader().read_to_end(&mut buf)?;
-        Ok(buf)
-    };
-    crate::core::fetch::with_retry(3, attempt)
+/// - `Ok(Some((temp, root)))`: the subpath files were fetched.
+/// - `Ok(None)`: the GitHub API worked but nothing exists under the subpath.
+/// - `Err`: API/network failure — callers should fall back to a full archive fetch.
+pub fn fetch_subdir_via_api(parsed: &Source) -> Result<Option<(tempfile::TempDir, PathBuf)>> {
+    fetch_subdir_via_api_with(parsed, &http_get)
 }
 
-fn fetch_skill_via_api_with(
+fn fetch_subdir_via_api_with(
     parsed: &Source,
-    skill_name: &str,
-    include_internal: bool,
     get: &dyn Fn(&str) -> Result<Vec<u8>>,
 ) -> Result<Option<(tempfile::TempDir, PathBuf)>> {
+    let Some(subpath) = parsed.subpath.as_deref() else {
+        return Ok(None);
+    };
+    let Some(tree) = fetch_tree_entries_with(parsed, get)? else {
+        return Ok(None);
+    };
+    download_blobs_under(&tree, Some(subpath), get)
+}
+
+/// A resolved ref plus the recursive tree listing of the repository.
+struct RepoTree {
+    owner: String,
+    repo: String,
+    r#ref: String,
+    /// Every path in the repo as `(path, type)` (`blob` / `tree`).
+    entries: Vec<(String, String)>,
+}
+
+/// Resolve the ref (explicit, or the repository's default branch) and list the
+/// whole repo tree recursively. `Ok(None)` when the source is not GitHub.
+fn fetch_tree_entries_with(
+    parsed: &Source,
+    get: &dyn Fn(&str) -> Result<Vec<u8>>,
+) -> Result<Option<RepoTree>> {
     if parsed.ty != SourceType::Github {
         return Ok(None);
     }
@@ -96,11 +107,92 @@ fn fetch_skill_via_api_with(
                 .collect()
         })
         .unwrap_or_default();
+    Ok(Some(RepoTree {
+        owner: owner.to_string(),
+        repo: repo.to_string(),
+        r#ref,
+        entries,
+    }))
+}
+
+/// Download every blob under `prefix` (all blobs when `prefix` is None) into a
+/// fresh temp dir at their original relative paths. `Ok(None)` when nothing
+/// matches, so callers can fall back to a full fetch.
+fn download_blobs_under(
+    tree: &RepoTree,
+    prefix: Option<&str>,
+    get: &dyn Fn(&str) -> Result<Vec<u8>>,
+) -> Result<Option<(tempfile::TempDir, PathBuf)>> {
+    let files: Vec<String> = match prefix {
+        None => tree
+            .entries
+            .iter()
+            .filter(|(_, t)| t == "blob")
+            .map(|(p, _)| p.clone())
+            .collect(),
+        Some(p) => {
+            let pref = format!("{p}/");
+            tree.entries
+                .iter()
+                .filter(|(path, t)| t == "blob" && path.starts_with(&pref))
+                .map(|(p, _)| p.clone())
+                .collect()
+        }
+    };
+    if files.is_empty() {
+        return Ok(None);
+    }
+
+    let out = tempfile::TempDir::new()?;
+    for f in &files {
+        let url = raw_url(&tree.owner, &tree.repo, &tree.r#ref, f)?;
+        let bytes = get(&url)?;
+        let target = out.path().join(f);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(target, bytes)?;
+    }
+    let root = out.path().to_path_buf();
+    Ok(Some((out, root)))
+}
+
+/// Real HTTP GET used by default (injectable for tests).
+///
+/// Uses the shared proxy-aware agent, honors `GITHUB_TOKEN` to raise the API rate
+/// limit when set, and retries transient failures with backoff.
+fn http_get(url: &str) -> Result<Vec<u8>> {
+    let attempt = || -> Result<Vec<u8>> {
+        let mut req = crate::core::fetch::agent()
+            .get(url)
+            .set("User-Agent", "agents-skills");
+        if let Ok(tok) = std::env::var("GITHUB_TOKEN")
+            && !tok.is_empty()
+        {
+            req = req.set("Authorization", &format!("Bearer {tok}"));
+        }
+        let resp = req.call()?;
+        let mut buf = Vec::new();
+        resp.into_reader().read_to_end(&mut buf)?;
+        Ok(buf)
+    };
+    crate::core::fetch::with_retry(3, attempt)
+}
+
+fn fetch_skill_via_api_with(
+    parsed: &Source,
+    skill_name: &str,
+    include_internal: bool,
+    get: &dyn Fn(&str) -> Result<Vec<u8>>,
+) -> Result<Option<(tempfile::TempDir, PathBuf)>> {
+    let Some(tree) = fetch_tree_entries_with(parsed, get)? else {
+        return Ok(None);
+    };
 
     // Candidate skill dirs (parents of any `SKILL.md`), shallowest first so the
     // first name/dir match shadows deeper ones (mirrors discover's priority).
     let mut candidates: Vec<(usize, String)> = Vec::new();
-    for (path, ty) in &entries {
+    for (path, ty) in &tree.entries {
         if ty != "blob" {
             continue;
         }
@@ -121,7 +213,12 @@ fn fetch_skill_via_api_with(
     let scratch = tempfile::TempDir::new()?;
     let mut matched: Option<Skill> = None;
     'outer: for (_, dir) in &candidates {
-        let url = raw_url(owner, repo, &r#ref, &format!("{dir}/SKILL.md"))?;
+        let url = raw_url(
+            &tree.owner,
+            &tree.repo,
+            &tree.r#ref,
+            &format!("{dir}/SKILL.md"),
+        )?;
         let Ok(bytes) = get(&url) else { continue };
         let md = scratch.path().join(dir.replace('/', "_")).join("SKILL.md");
         if let Some(parent) = md.parent() {
@@ -141,34 +238,12 @@ fn fetch_skill_via_api_with(
         return Ok(None);
     };
     let dir = skill.dir.to_string_lossy().into_owned();
-
-    // Download every blob under the matched dir into a fresh temp dir.
-    let out = tempfile::TempDir::new()?;
-    let files: Vec<String> = if dir.is_empty() {
-        entries
-            .iter()
-            .filter(|(_, t)| t == "blob")
-            .map(|(p, _)| p.clone())
-            .collect()
+    let prefix = if dir.is_empty() {
+        None
     } else {
-        let prefix = format!("{dir}/");
-        entries
-            .iter()
-            .filter(|(p, t)| t == "blob" && p.starts_with(&prefix))
-            .map(|(p, _)| p.clone())
-            .collect()
+        Some(dir.as_str())
     };
-    for f in &files {
-        let url = raw_url(owner, repo, &r#ref, f)?;
-        let bytes = get(&url)?;
-        let target = out.path().join(f);
-        if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(target, bytes)?;
-    }
-    let root = out.path().to_path_buf();
-    Ok(Some((out, root)))
+    download_blobs_under(&tree, prefix, get)
 }
 
 /// `https://api.github.com/repos/{owner}/{repo}` (default branch lookup).
@@ -305,6 +380,60 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn fetch_subdir_downloads_only_that_dir() {
+        let parsed = parse_source("acme/skills/skills/pdf").unwrap();
+        let tree = [
+            ("skills/pdf/SKILL.md", "blob"),
+            ("skills/pdf/scripts/run.sh", "blob"),
+            ("skills/doc/SKILL.md", "blob"),
+            ("README.md", "blob"),
+        ];
+        let files = [
+            (
+                "skills/pdf/SKILL.md",
+                "---\nname: pdf\ndescription: d\n---\nbody",
+            ),
+            ("skills/pdf/scripts/run.sh", "#!/bin/sh\n"),
+            (
+                "skills/doc/SKILL.md",
+                "---\nname: doc\ndescription: d\n---\nbody",
+            ),
+            ("README.md", "# read me"),
+        ];
+        let get = fake_get("main", &tree, &files);
+        let (tmp, root) = fetch_subdir_via_api_with(&parsed, &get)
+            .unwrap()
+            .expect("files under skills/pdf should match");
+
+        assert!(root.join("skills/pdf/SKILL.md").is_file());
+        assert!(root.join("skills/pdf/scripts/run.sh").is_file());
+        // Files outside the subpath are not fetched.
+        assert!(!root.join("skills/doc/SKILL.md").exists());
+        assert!(!root.join("README.md").exists());
+        let _ = tmp;
+    }
+
+    #[test]
+    fn fetch_subdir_without_files_returns_none() {
+        let parsed = parse_source("acme/skills/skills/missing").unwrap();
+        let tree = [("skills/pdf/SKILL.md", "blob"), ("README.md", "blob")];
+        let files = [(
+            "skills/pdf/SKILL.md",
+            "---\nname: pdf\ndescription: d\n---\nbody",
+        )];
+        let get = fake_get("main", &tree, &files);
+        let res = fetch_subdir_via_api_with(&parsed, &get).unwrap();
+        assert!(res.is_none());
+    }
+
+    #[test]
+    fn fetch_subdir_ignores_non_github() {
+        let parsed = parse_source("https://gitlab.com/acme/skills/-/tree/main/skills/pdf").unwrap();
+        let get = |_: &str| -> Result<Vec<u8>> { unreachable!("no HTTP for non-github") };
+        assert!(fetch_subdir_via_api_with(&parsed, &get).unwrap().is_none());
     }
 
     #[test]

@@ -14,7 +14,7 @@ use crate::core::agents::{
 };
 use crate::core::discover::{Skill, discover_skills, filter_skills};
 use crate::core::fetch::fetch_source;
-use crate::core::github::fetch_skill_via_api;
+use crate::core::github::{fetch_skill_via_api, fetch_subdir_via_api};
 use crate::core::install::{
     get_canonical_path, install_skill, list_disabled_skills, list_installed_skills, move_skill,
     sanitize_name, scan_disabled, scan_installed,
@@ -163,13 +163,16 @@ impl Manager {
             skills = discover_skills(path, parsed.subpath.as_deref(), include_internal)?;
             _temp = None;
         } else {
-            // `@skill` install: fetch only the matching subdir via the GitHub API
-            // when possible; fall back to the whole-repo archive on any failure.
+            // Fast path: fetch only what is needed via the GitHub API when
+            // possible — the `@skill`-selected dir, or every file under the
+            // subpath — falling back to the whole-repo archive on any failure.
             let fast: Option<(tempfile::TempDir, PathBuf)> =
                 if let (Some(name), false) = (parsed.skill_filter.as_deref(), req.list_only) {
                     fetch_skill_via_api(&parsed, name, include_internal)
                         .ok()
                         .flatten()
+                } else if parsed.ty == SourceType::Github {
+                    fetch_subdir_via_api(&parsed).ok().flatten()
                 } else {
                     None
                 };
