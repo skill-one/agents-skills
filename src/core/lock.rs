@@ -40,7 +40,7 @@ pub struct LockEntry {
     /// Branch or tag used at install time.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub r#ref: Option<String>,
-    /// Source type (github / gitlab / git / local / well-known / download / node_modules).
+    /// Source type (github / gitlab / git / local / download).
     pub source_type: String,
     /// Skill path within the source repo (e.g. `skills/pdf`).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -90,7 +90,6 @@ pub fn lock_fields(
         SourceType::Gitlab => "gitlab",
         SourceType::Git => "git",
         SourceType::Local => "local",
-        SourceType::WellKnown => "well-known",
         SourceType::Download => "download",
     };
     match parsed.ty {

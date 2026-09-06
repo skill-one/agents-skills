@@ -2,11 +2,12 @@
 //!
 //! Supports: local paths, GitHub URLs (incl. `/tree/<ref>/<path>`), GitLab URLs
 //! (incl. `/-/tree/`), GitHub shorthand (`owner/repo`, `owner/repo@skill`,
-//! `owner/repo/subpath`), SSH / generic git URLs, and arbitrary https (well-known /
-//! direct download).
+//! `owner/repo/subpath`), SSH / generic git URLs, and arbitrary https (direct
+//! download + extract).
 //!
-//! Not supported: `github:`/`gitlab:` prefixes, `#ref@skill` fragments, and
-//! SOURCE_ALIASES alias mapping.
+//! Not supported: `github:`/`gitlab:` prefixes, `#ref@skill` fragments,
+//! SOURCE_ALIASES alias mapping, and GitHub URL paths without `/tree/` (bare
+//! paths and `/blob/` URLs are rejected with a hint).
 
 use std::path::{Path, PathBuf};
 
@@ -25,9 +26,8 @@ pub enum SourceType {
     Git,
     /// Local filesystem path.
     Local,
-    /// Arbitrary https endpoint (try well-known discovery first, then direct download).
-    WellKnown,
-    /// Hosted artifact direct link (raw / archive / release asset), must be downloaded directly.
+    /// Hosted artifact or arbitrary https endpoint, downloaded and extracted
+    /// directly (raw file / archive / release asset / any non-git https URL).
     Download,
 }
 
@@ -152,23 +152,6 @@ fn is_hosted_artifact_url(input: &str) -> bool {
     false
 }
 
-/// Arbitrary https endpoint: not a known git host and not ending in `.git` → well-known.
-fn is_well_known_url(input: &str) -> bool {
-    if !input.starts_with("http://") && !input.starts_with("https://") {
-        return false;
-    }
-    let Some(host) = host_of(input) else {
-        return false;
-    };
-    if matches!(
-        host.as_str(),
-        "github.com" | "gitlab.com" | "raw.githubusercontent.com"
-    ) {
-        return false;
-    }
-    !input.ends_with(".git")
-}
-
 /// URL parsers auto-normalize `..` segments, so we must pre-check the raw input for traversal.
 fn reject_traversal(input: &str) -> Result<()> {
     sanitize_subpath(input).map(|_| ())
@@ -185,6 +168,18 @@ fn parse_github_url(input: &str) -> Result<Option<Source>> {
     let segs: Vec<&str> = parsed.path().split('/').filter(|s| !s.is_empty()).collect();
     if segs.len() < 2 {
         return Ok(None);
+    }
+    // A URL path is only meaningful through /tree/<ref>[/<path>]; anything else
+    // (bare path, /blob/) would silently install the wrong scope.
+    if segs.len() > 2 && segs[2] != "tree" {
+        let hint = if segs[2] == "blob" {
+            "GitHub /blob/ URLs point at a single file; use /tree/<ref>/<path>, owner/repo[/subpath], or owner/repo@skill instead"
+        } else {
+            "use /tree/<ref>/<path>, owner/repo[/subpath], or owner/repo@skill to select a subpath"
+        };
+        return Err(SkillsError::msg(format!(
+            "Unsupported GitHub URL: \"{input}\". {hint}."
+        )));
     }
     let repo = segs[1].strip_suffix(".git").unwrap_or(segs[1]);
     let mut s = Source::new(
@@ -208,6 +203,14 @@ fn parse_gitlab_url(input: &str) -> Result<Option<Source>> {
     };
     let host = parsed.host_str().unwrap_or_default().to_lowercase();
     let path = parsed.path();
+
+    // GitLab /-/blob/ points at a single file and would otherwise be mangled
+    // into a bogus repo path; reject it with a hint instead.
+    if path.contains("/-/blob/") {
+        return Err(SkillsError::msg(format!(
+            "Unsupported GitLab URL: \"{input}\". GitLab /blob/ URLs point at a single file; use /-/tree/<ref>/<path> or the repo URL instead."
+        )));
+    }
 
     // Any GitLab instance's /-/tree/<ref>[/<subpath>]
     if let Some(idx) = path.find("/-/tree/") {
@@ -271,6 +274,14 @@ fn parse_shorthand(input: &str) -> Result<Option<Source>> {
     }
 
     // owner/repo[/subpath]
+    // An '@' surviving this far means a subpath and @skill were combined
+    // (e.g. owner/repo/skills/pdf@pdf); reject it instead of swallowing the
+    // '@' into the subpath.
+    if rest.contains('@') {
+        return Err(SkillsError::msg(format!(
+            "Cannot combine a subpath with @skill selection in \"{input}\"; use --skill to pick a skill."
+        )));
+    }
     let segs: Vec<&str> = rest.split('/').collect();
     let repo = segs[0];
     if repo.is_empty() {
@@ -318,8 +329,12 @@ pub fn parse_source(input: &str) -> Result<Source> {
     if let Some(s) = parse_shorthand(input)? {
         return Ok(s);
     }
-    if is_well_known_url(input) {
-        return Ok(Source::new(SourceType::WellKnown, input));
+    // Any other https/http endpoint: download + extract (zip / tar / single file).
+    if input.starts_with("http://") || input.starts_with("https://") {
+        if input.ends_with(".git") {
+            return Ok(Source::new(SourceType::Git, input));
+        }
+        return Ok(Source::new(SourceType::Download, input));
     }
 
     // Fallback: treat as a generic git URL.
@@ -433,6 +448,32 @@ mod tests {
     }
 
     #[test]
+    fn github_bare_path_url_is_rejected() {
+        let e = parse_source("https://github.com/acme/skills/skills/pdf").unwrap_err();
+        assert!(e.to_string().contains("Unsupported GitHub URL"));
+    }
+
+    #[test]
+    fn github_blob_url_is_rejected() {
+        let e = parse_source("https://github.com/acme/skills/blob/main/skills/pdf/SKILL.md")
+            .unwrap_err();
+        assert!(e.to_string().contains("/blob/"));
+    }
+
+    #[test]
+    fn gitlab_blob_url_is_rejected() {
+        let e = parse_source("https://gitlab.com/group/repo/-/blob/main/skills/pdf/SKILL.md")
+            .unwrap_err();
+        assert!(e.to_string().contains("/blob/"));
+    }
+
+    #[test]
+    fn shorthand_subpath_with_skill_is_rejected() {
+        let e = parse_source("acme/skills/skills/pdf@pdf").unwrap_err();
+        assert!(e.to_string().contains("--skill"));
+    }
+
+    #[test]
     fn gitlab_url_with_subgroups() {
         let s = parse_source("https://gitlab.com/group/subgroup/repo").unwrap();
         assert_eq!(s.ty, SourceType::Gitlab);
@@ -455,9 +496,9 @@ mod tests {
     }
 
     #[test]
-    fn well_known_url() {
+    fn https_url_is_download() {
         let s = parse_source("https://example.com/foo/skill").unwrap();
-        assert_eq!(s.ty, SourceType::WellKnown);
+        assert_eq!(s.ty, SourceType::Download);
     }
 
     #[test]
@@ -510,7 +551,7 @@ mod tests {
         // GitLab without a ref cannot resolve a default branch for the archive.
         let s = parse_source("https://gitlab.com/group/sub/repo").unwrap();
         assert_eq!(s.archive_url(), None);
-        // Well-known / download sources do not use archive URLs.
+        // Download sources do not use archive URLs.
         let s = parse_source("https://example.com/x.zip").unwrap();
         assert_eq!(s.archive_url(), None);
     }

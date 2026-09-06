@@ -54,7 +54,7 @@ pub fn fetch_source(parsed: &Source) -> Result<(tempfile::TempDir, std::path::Pa
             let root = tmp.path().to_path_buf();
             Ok((tmp, root))
         }
-        SourceType::Download | SourceType::WellKnown => download_and_extract(&parsed.url),
+        SourceType::Download => download_and_extract(&parsed.url),
         SourceType::Git => {
             let tmp = clone_repo(&parsed.url, parsed.r#ref.as_deref())?;
             let root = tmp.path().to_path_buf();
