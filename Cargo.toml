@@ -1,6 +1,6 @@
 [package]
 name = "agents-skills"
-version = "0.10.1"
+version = "0.11.0"
 edition = "2024"
 description = "A minimal, stable, easy-to-understand skill installer and manager for AI agents"
 license = "MIT OR Apache-2.0"
