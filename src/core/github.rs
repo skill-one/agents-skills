@@ -165,15 +165,16 @@ fn http_get(url: &str) -> Result<Vec<u8>> {
     let attempt = || -> Result<Vec<u8>> {
         let mut req = crate::core::fetch::agent()
             .get(url)
-            .set("User-Agent", "agents-skills");
+            .header("User-Agent", "agents-skills");
         if let Ok(tok) = std::env::var("GITHUB_TOKEN")
             && !tok.is_empty()
         {
-            req = req.set("Authorization", &format!("Bearer {tok}"));
+            req = req.header("Authorization", &format!("Bearer {tok}"));
         }
-        let resp = req.call()?;
+        let mut resp = req.call()?;
+        let mut reader = resp.body_mut().as_reader();
         let mut buf = Vec::new();
-        resp.into_reader().read_to_end(&mut buf)?;
+        reader.read_to_end(&mut buf)?;
         Ok(buf)
     };
     crate::core::fetch::with_retry(3, attempt)

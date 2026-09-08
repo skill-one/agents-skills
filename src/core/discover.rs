@@ -75,7 +75,7 @@ struct Frontmatter {
     #[serde(default)]
     description: Option<String>,
     #[serde(default)]
-    metadata: Option<serde_yaml::Value>,
+    metadata: Option<noyalib::Value>,
 }
 
 /// Split the `---`-delimited frontmatter, returning the YAML data.
@@ -98,17 +98,17 @@ pub fn parse_skill_md(skill_md: &Path) -> Option<Skill> {
 pub fn parse_skill_md_inner(skill_md: &Path, include_internal: bool) -> Option<Skill> {
     let content = fs::read_to_string(skill_md).ok()?;
     let data = split_frontmatter(&content)?;
-    let fm: Frontmatter = serde_yaml::from_str(data).ok()?;
+    let fm: Frontmatter = noyalib::from_str(data).ok()?;
     let name = fm.name?;
     let description = fm.description?;
 
     // internal skill: only visible when explicitly requested or INSTALL_INTERNAL_SKILLS=1.
-    let is_internal = matches!(
-        fm.metadata,
-        Some(serde_yaml::Value::Mapping(m))
-            if m.get(serde_yaml::Value::String("internal".to_string()))
-                == Some(&serde_yaml::Value::Bool(true))
-    );
+    let is_internal = fm
+        .metadata
+        .as_ref()
+        .and_then(|m| m.get("internal"))
+        .and_then(|m| m.as_bool())
+        .unwrap_or(false);
     if is_internal && !include_internal && !install_internal_skills() {
         return None;
     }

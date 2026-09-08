@@ -17,7 +17,7 @@ pub enum SkillsError {
     Json(#[from] serde_json::Error),
     /// YAML (de)serialization error.
     #[error(transparent)]
-    Yaml(#[from] serde_yaml::Error),
+    Yaml(#[from] noyalib::Error),
     /// git (libgit2) error.
     #[error(transparent)]
     Git(#[from] git2::Error),

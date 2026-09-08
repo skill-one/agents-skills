@@ -13,11 +13,17 @@ use git2::build::{CheckoutBuilder, RepoBuilder};
 use crate::core::source::{Source, SourceType};
 use crate::error::{Result, SkillsError};
 
-/// Shared HTTP agent: honors `HTTP(S)_PROXY` / `ALL_PROXY` env vars (opt-in via the
-/// `proxy-from-env` feature) so proxied networks can reach GitHub.
+/// Shared HTTP agent: honors `HTTP(S)_PROXY` / `ALL_PROXY` / `NO_PROXY` env vars
+/// (ureq reads them via `Proxy::try_from_env`) so proxied networks can reach GitHub.
 pub(crate) fn agent() -> &'static ureq::Agent {
     static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
-    AGENT.get_or_init(|| ureq::AgentBuilder::new().try_proxy_from_env(true).build())
+    AGENT.get_or_init(|| {
+        let mut builder = ureq::Agent::config_builder();
+        if let Some(proxy) = ureq::Proxy::try_from_env() {
+            builder = builder.proxy(Some(proxy));
+        }
+        ureq::Agent::new_with_config(builder.build())
+    })
 }
 
 /// Run `f` up to `attempts` times with exponential backoff between failures
@@ -113,8 +119,8 @@ fn download_to_file(url: &str) -> Result<(tempfile::TempDir, PathBuf)> {
     let tmp = tempfile::TempDir::new()?;
     let file = tmp.path().join("download");
     let attempt = || -> Result<()> {
-        let resp = agent().get(url).call()?;
-        let mut reader = resp.into_reader();
+        let mut resp = agent().get(url).call()?;
+        let mut reader = resp.body_mut().as_reader();
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf)?;
         std::fs::write(&file, &buf)?;
