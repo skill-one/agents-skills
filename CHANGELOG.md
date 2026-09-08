@@ -9,6 +9,8 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-09-09
+
 ### Changed
 
 - (library, breaking) `SkillsError::Yaml` now wraps `noyalib::Error` instead of
@@ -149,7 +151,8 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 - chore: upgrade git2 to 0.21 to fix RUSTSEC advisories.
 - chore: dual license, GitHub Actions, crates.io release metadata.
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/skill-one/agents-skills/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/skill-one/agents-skills/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/skill-one/agents-skills/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/skill-one/agents-skills/compare/v0.9.2...v0.10.0
