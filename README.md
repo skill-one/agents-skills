@@ -135,6 +135,11 @@ Commands have no aliases (a minimal interface — full names only).
 > users see [docs/LIBRARY.md](docs/LIBRARY.md); project developers see
 > [docs/DEVELOPER.md](docs/DEVELOPER.md).
 
+## Changelog
+
+Notable changes per release are documented in [CHANGELOG.md](CHANGELOG.md)
+(中文版见 [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)).
+
 ## License
 
 Licensed under either of:

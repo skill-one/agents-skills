@@ -10,7 +10,7 @@
 
 项目刻意分层，库与 CLI 职责严格分离：
 
-- **库**（`src/lib.rs` + `src/manager.rs` + `src/core/`）—— 纯数据：从不打印、
+- **库**（`src/lib.rs` + `src/manager/` + `src/core/`）—— 纯数据：从不打印、
   从不调用 `process::exit`，错误通过 `Result` 上抛。
 - **CLI**（`src/main.rs` + `src/cli.rs` + `src/commands/`）—— 库之上的薄渲染层：
   只负责 clap 参数拆解、把请求结构体交给 `Manager`、再把结果渲染成人类/机器可读
@@ -24,7 +24,11 @@
 ```
 src/
 ├── lib.rs              库根：Manager 门面 + 请求/结果类型 + 私有 core 模块
-├── manager.rs          高层 Manager 门面（add/list/remove/update/disable/enable/link）
+├── manager/            高层 Manager 门面（add/list/remove/update/disable/enable/link）
+│   ├── mod.rs          Manager 方法（每个 CLI 命令对应一个）
+│   ├── types.rs        与 CLI 层共享的请求/结果结构体
+│   ├── select.rs       选择辅助函数（技能匹配 + agent 解析）
+│   └── tests.rs        选择辅助函数的单元测试
 ├── error.rs            统一错误类型与 Result 别名
 ├── core/               领域逻辑（纯函数、依赖可注入）
 │   ├── mod.rs          模块组织与重导出
@@ -35,7 +39,12 @@ src/
 │   ├── fetch.rs        git 克隆 / HTTP 下载 / 归档解包
 │   ├── github.rs       GitHub API 单技能快速拉取
 │   ├── install.rs      安装技能到规范目录 + 已装清单
-│   ├── link.rs         目录级 agent 链接（link/unlink/migrate）
+│   ├── link/           目录级 agent 链接（link/unlink/migrate）
+│   │   ├── mod.rs      链接编排 + 公开入口
+│   │   ├── backup.rs   备份槽：停车/恢复 + 迁移既有目录
+│   │   ├── outcome.rs  LinkOutcome 结果枚举
+│   │   ├── path.rs     路径分类辅助函数
+│   │   └── tests.rs    链接机制的单元测试
 │   ├── lock.rs         skills-lock.json 读写 + 内容哈希
 │   └── test_utils.rs   单元测试共享夹具
 ├── main.rs             bin 入口（库之上的薄 CLI）

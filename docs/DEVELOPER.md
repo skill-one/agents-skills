@@ -12,7 +12,7 @@ the library API see [LIBRARY.md](LIBRARY.md).
 The project is deliberately layered, with a strict separation between the
 library and the CLI:
 
-- **Library** (`src/lib.rs` + `src/manager.rs` + `src/core/`) — pure data:
+- **Library** (`src/lib.rs` + `src/manager/` + `src/core/`) — pure data:
   never prints, never calls `process::exit`, and surfaces errors through
   `Result`.
 - **CLI** (`src/main.rs` + `src/cli.rs` + `src/commands/`) — a thin rendering
@@ -30,7 +30,11 @@ layer touch domain logic directly.
 ```
 src/
 ├── lib.rs              Library root: Manager facade + request/result types + private core module
-├── manager.rs          High-level Manager facade (add/list/remove/update/disable/enable/link)
+├── manager/            High-level Manager facade (add/list/remove/update/disable/enable/link)
+│   ├── mod.rs          Manager methods (one per CLI command)
+│   ├── types.rs        Request/outcome structs shared with the CLI layer
+│   ├── select.rs       Selection helpers (skill matching + agent resolution)
+│   └── tests.rs        Unit tests for the selection helpers
 ├── error.rs            Unified error type and Result alias
 ├── core/               Domain logic (pure functions, injectable dependencies)
 │   ├── mod.rs          Module organization and re-exports
@@ -41,7 +45,12 @@ src/
 │   ├── fetch.rs        git clone / HTTP download / archive unpacking
 │   ├── github.rs       GitHub API single-skill fast path
 │   ├── install.rs      Install skills into the canonical directory + installed-skills listing
-│   ├── link.rs         Directory-level agent linking (link/unlink/migrate)
+│   ├── link/           Directory-level agent linking (link/unlink/migrate)
+│   │   ├── mod.rs      Link orchestration + public entry points
+│   │   ├── backup.rs   Backup slots: park/unpark + migration of pre-existing dirs
+│   │   ├── outcome.rs  LinkOutcome result enum
+│   │   ├── path.rs     Path classification helpers
+│   │   └── tests.rs    Unit tests for the linking machinery
 │   ├── lock.rs         skills-lock.json read/write + content hashing
 │   └── test_utils.rs   Shared unit-test fixtures
 ├── main.rs             bin entry point (thin CLI on top of the library)

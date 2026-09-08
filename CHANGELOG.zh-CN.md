@@ -1,0 +1,158 @@
+# 更新日志
+
+本文件记录项目的所有显著变更。格式大致遵循
+[Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),版本号遵循
+[语义化版本](https://semver.org/lang/zh-CN/):处于 0.x 阶段时,破坏性变更可能出现在
+次版本中(以 **(breaking)** 标注)。
+
+英文版见 [CHANGELOG.md](CHANGELOG.md)。
+
+## [Unreleased](未发布)
+
+### 变更
+
+- (库, breaking) `SkillsError::Yaml` 现在包装 [noyalib](https://crates.io/crates/noyalib)
+  的错误类型(纯 Rust、零 unsafe、完整 serde 集成的 YAML 库),取代已停止维护的
+  `serde_yaml`;SKILL.md frontmatter 改用 `noyalib` 解析。
+- (依赖) `ureq` 2.x → 3.x(环境代理已内置,不再需要单独的 `proxy-from-env` feature)。
+
+### 内部
+
+- 将 `src/core/link.rs`(约 1600 行)与 `src/manager.rs`(约 1500 行)拆分为职责单一的
+  子模块 —— `core/link/{mod,backup,outcome,path}` 与 `manager/{mod,types,select}`。
+  行为无任何变化。
+- 新增本更新日志(英文 + 中文),并在两份 README 中挂链接。
+
+## [0.11.0] — 2026-09-06
+
+### 新增
+
+- perf(add):通过 GitHub API 只拉取所需的子目录(整包归档下载保留为回退路径)。
+
+### 变更
+
+- refactor(source):将 `WellKnown` 并入 `Download`;拒绝有歧义的 GitHub URL。
+- (文档)重写两份 README 的来源格式章节。
+
+## [0.10.1] — 2026-09-02
+
+### 修复
+
+- fix(link):迁移 agent 既有技能时保持已禁用技能的禁用状态。
+
+## [0.10.0] — 2026-08-31
+
+### 新增
+
+- feat(agents):新增 Comate、JoyCode、LM Studio、QwenWork 及注册表补漏。
+
+## [0.9.2] — 2026-08-30
+
+### 变更
+
+- refactor(core):将 agent 表抽取为声明式 `agents.jsonl`
+  (新增 agent 现在只需改一行数据,无需动 Rust 代码)。
+- (文档)AGENT.md 更名为 AGENTS.md。
+
+## [0.9.1] — 2026-08-29
+
+### 变更
+
+- (文档)文档改写为英文,并附带 zh-CN 翻译版。
+- (仓库)默认忽略点文件;反向包含仓库内的点条目。
+
+## [0.9.0] — 2026-08-29
+
+### 变更
+
+- feat(cli) **(breaking)**:默认使用全局作用域;`--project <dir>` 进入项目作用域。
+
+## [0.8.0] — 2026-08-29
+
+### 新增
+
+- feat(agent) **(breaking)**:链接时把 agent 既有技能目录整体"停车"进备份槽
+  (unlink 时恢复)。
+
+### 变更
+
+- refactor(api) **(breaking)**:`core` 模块转为私有。
+- refactor:精简 CLI 命令面;修复检测与更新的边界情况。
+- refactor(core):去重子路径穿越检查;移除无用的字段。
+
+### 修复
+
+- fix(fetch):解压 gzip 下载内容,并且只嗅探一次归档类型。
+
+## [0.7.0] — 2026-08-25
+
+### 移除
+
+- feat(api) **(breaking)**:移除 `Manager::add_source` 便捷方法。
+
+## [0.6.0] — 2026-08-25
+
+### 新增
+
+- feat(agent):`--status` 对未链接 agent 也显示内部技能。
+- feat(remove):同时扫描已禁用技能,使禁用中的技能也可移除。
+
+## [0.5.0] — 2026-08-24
+
+### 新增
+
+- feat:技能的 enable/disable 命令。
+- feat:快速、健壮的 GitHub 技能拉取;支持 `@skill` 过滤。
+
+### 变更
+
+- refactor **(breaking)**:库内 link API 更名为 agent 命名。
+- refactor **(breaking)**:`link` 命令替换为 `agent` 子命令。
+- (文档)文档拆分为 CLI/库/开发者三份指南。
+
+## [0.4.0] — 2026-08-22
+
+### 新增
+
+- feat:完善链接状态、冲突迁移与 list 输出。
+
+### 变更
+
+- (文档)开发者指南迁移至 `docs/DEVELOPER.md`。
+
+## [0.3.0] — 2026-08-22
+
+### 变更
+
+- refactor(link):`unlink` 与 `status` 合并进 `link` 命令。
+
+## [0.2.0] — 2026-08-22
+
+### 新增
+
+- feat **(breaking)**:新增 `link`/`unlink` 命令;`add`/`remove` 保持仅操作规范目录。
+
+## [0.1.0] — 2026-08-22
+
+### 新增
+
+- 首个发布:以库 + CLI 二进制双形态交付。
+- fix:所有平台上拒绝 discover 子路径穿越。
+- chore:升级 git2 至 0.21 以修复 RUSTSEC 安全通告。
+- chore:双许可证、GitHub Actions、crates.io 发布元数据。
+
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/skill-one/agents-skills/compare/v0.10.1...v0.11.0
+[0.10.1]: https://github.com/skill-one/agents-skills/compare/v0.10.0...v0.10.1
+[0.10.0]: https://github.com/skill-one/agents-skills/compare/v0.9.2...v0.10.0
+[0.9.2]: https://github.com/skill-one/agents-skills/compare/v0.9.1...v0.9.2
+[0.9.1]: https://github.com/skill-one/agents-skills/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/skill-one/agents-skills/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/skill-one/agents-skills/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/skill-one/agents-skills/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/skill-one/agents-skills/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/skill-one/agents-skills/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/skill-one/agents-skills/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/skill-one/agents-skills/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/skill-one/agents-skills/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/skill-one/agents-skills/releases/tag/v0.1.0

@@ -118,6 +118,11 @@ HTTPS 来源直接下载并解压(zip / tar / tar.gz 压缩包,或单个文件�
 > [docs/LIBRARY.zh-CN.md](docs/LIBRARY.zh-CN.md)；项目开发者见
 > [docs/DEVELOPER.zh-CN.md](docs/DEVELOPER.zh-CN.md)。
 
+## 更新日志
+
+各版本的显著变更见 [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
+(English: [CHANGELOG.md](CHANGELOG.md)).
+
 ## License
 
 在以下任一许可证下授权：
