@@ -1,6 +1,6 @@
 {"name":"aider-desk","display":"AiderDesk","skills_dir":".aider-desk/skills","global":{"home":".aider-desk/skills"},"detect":[{"home":".aider-desk"}]}
 {"name":"amp","display":"Amp","skills_dir":".agents/skills","global":{"config":"agents/skills"},"detect":[{"config":"amp"}]}
-{"name":"antigravity","display":"Antigravity","skills_dir":".agents/skills","global":{"home":".gemini/antigravity/skills"},"detect":[{"home":".gemini/antigravity"}]}
+{"name":"antigravity","display":"Antigravity","skills_dir":".agents/skills","global":{"home":".gemini/config/skills"},"detect":[{"home":".gemini/antigravity"}]}
 {"name":"antigravity-cli","display":"Antigravity CLI","skills_dir":".agents/skills","global":{"home":".gemini/antigravity-cli/skills"},"detect":[{"home":".gemini/antigravity-cli"}]}
 {"name":"astrbot","display":"AstrBot","skills_dir":"data/skills","global":{"home":".astrbot/data/skills"},"detect":[{"cwd":"data/skills"},{"home":".astrbot"}]}
 {"name":"autohand-code","display":"Autohand Code CLI","skills_dir":".autohand/skills","global":{"env_home":{"var":"AUTOHAND_HOME","default":".autohand","path":"skills"}},"detect":[{"env_home":{"var":"AUTOHAND_HOME","default":".autohand"}}]}
