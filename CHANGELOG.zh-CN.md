@@ -9,6 +9,13 @@
 
 ## [Unreleased](未发布)
 
+## [0.12.1] — 2026-09-11
+
+### 修复
+
+- (agents) 将 Antigravity 的全局 skills 目录从 `.gemini/antigravity/skills`
+  更正为 `.gemini/config/skills`——Antigravity 实际读取全局 skills 的位置。
+
 ## [0.12.0] — 2026-09-09
 
 ### 变更
@@ -143,7 +150,8 @@
 - chore:升级 git2 至 0.21 以修复 RUSTSEC 安全通告。
 - chore:双许可证、GitHub Actions、crates.io 发布元数据。
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/skill-one/agents-skills/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/skill-one/agents-skills/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/skill-one/agents-skills/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/skill-one/agents-skills/compare/v0.10.0...v0.10.1
