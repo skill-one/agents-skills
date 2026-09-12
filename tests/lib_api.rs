@@ -146,7 +146,10 @@ fn lib_agent_status_reports_canonical_and_linked() {
     std::fs::create_dir_all(&home).unwrap();
     std::fs::create_dir_all(&cwd).unwrap();
 
-    // Installed universal agent (codex detects ~/.codex) → canonical: true.
+    // cline is native at global scope too (global dir ~/.agents/skills).
+    std::fs::create_dir_all(home.join(".cline")).unwrap();
+    // codex is universal at PROJECT scope but reads ~/.codex/skills globally:
+    // installed but not canonical until explicitly linked.
     std::fs::create_dir_all(home.join(".codex")).unwrap();
     // Installed non-universal agent (trae detects ~/.trae) → linked after linking.
     std::fs::create_dir_all(home.join(".trae")).unwrap();
@@ -169,13 +172,31 @@ fn lib_agent_status_reports_canonical_and_linked() {
     let trae = statuses.iter().find(|s| s.name == "trae").unwrap();
     assert!(!trae.canonical);
     assert!(trae.linked);
+    let cline = statuses.iter().find(|s| s.name == "cline").unwrap();
+    assert!(cline.canonical);
+    assert!(cline.linked);
+    // Scope-aware: codex is NOT canonical globally and starts unlinked.
     let codex = statuses.iter().find(|s| s.name == "codex").unwrap();
-    assert!(codex.canonical);
-    assert!(codex.linked);
+    assert!(!codex.canonical);
+    assert!(!codex.linked);
     // Uninstalled agents (neither installed nor linked) are not reported.
     assert!(statuses.iter().all(|s| s.name != "claude-code"));
     // Uninstalled universal agents are not reported either.
     assert!(statuses.iter().all(|s| s.name != "amp"));
+
+    // Linking codex at global scope connects its vendor dir.
+    manager
+        .agent(&AgentRequest {
+            agents: vec!["codex".to_string()],
+            global: true,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(home.join(".codex/skills").is_symlink());
+    let statuses = manager.agent_status(true);
+    let codex = statuses.iter().find(|s| s.name == "codex").unwrap();
+    assert!(!codex.canonical);
+    assert!(codex.linked);
 }
 
 #[test]
@@ -303,10 +324,11 @@ fn lib_agent_status_orders_canonical_first() {
     std::fs::create_dir_all(&home).unwrap();
     std::fs::create_dir_all(&cwd).unwrap();
 
-    // claude-code (non-canonical) precedes codex in the static agent table, so
+    // At global scope cline is canonical (global dir ~/.agents/skills);
+    // claude-code (non-canonical) precedes cline in the static agent table, so
     // this fixture proves the canonical-first ordering rather than a coincidence.
     std::fs::create_dir_all(home.join(".claude")).unwrap();
-    std::fs::create_dir_all(home.join(".codex")).unwrap();
+    std::fs::create_dir_all(home.join(".cline")).unwrap();
 
     let manager = Manager::builder()
         .home(home.clone())
@@ -326,8 +348,8 @@ fn lib_agent_status_orders_canonical_first() {
 
     let statuses = manager.agent_status(true);
     let names: Vec<&str> = statuses.iter().map(|s| s.name.as_str()).collect();
-    // canonical (universal) agents come first; the rest keep table order.
-    assert_eq!(names, vec!["codex", "claude-code"]);
+    // canonical agents come first; the rest keep table order.
+    assert_eq!(names, vec!["cline", "claude-code"]);
 }
 
 #[test]

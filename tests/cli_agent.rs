@@ -264,6 +264,42 @@ fn agent_status_marks_universal_agents_as_canonical() {
 }
 
 #[test]
+fn agent_global_link_connects_project_universal_agent_vendor_dir() {
+    let p = TestProject::new();
+    // Antigravity is universal at project scope but reads the vendor-specific
+    // ~/.gemini/config/skills dir at GLOBAL scope (HOME is faked for hermeticity).
+    std::fs::create_dir_all(p.path().join(".gemini/config")).unwrap();
+
+    p.skills()
+        .env("HOME", p.path())
+        .args(["agent", "--link", "antigravity"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("linked"));
+
+    let link = p.path().join(".gemini/config/skills");
+    assert!(link.is_symlink());
+
+    // Global status reports it as linked (not canonical).
+    p.skills()
+        .env("HOME", p.path())
+        .args(["agent", "--status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("antigravity) — linked"));
+
+    // Unlink restores a real empty dir.
+    p.skills()
+        .env("HOME", p.path())
+        .args(["agent", "--unlink", "antigravity"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("unlinked"));
+    assert!(link.is_dir());
+    assert!(!link.is_symlink());
+}
+
+#[test]
 fn agent_status_conflicts_with_unlink_and_migrate() {
     let p = TestProject::new();
 

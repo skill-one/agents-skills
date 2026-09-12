@@ -205,7 +205,10 @@ pub struct Agent {
 }
 
 impl Agent {
-    /// Whether it uses the common `.agents/skills` dir (no symlink needed).
+    /// Whether its project skills dir is the common `.agents/skills` dir.
+    ///
+    /// This is the project-scope classification only; for the scope-aware
+    /// version (global agents may have a vendor-specific dir) use [`is_native`].
     pub fn is_universal(&self) -> bool {
         self.skills_dir == UNIVERSAL_SKILLS_DIR
     }
@@ -256,18 +259,42 @@ pub fn agent_display(name: &str) -> String {
         .unwrap_or_else(|| name.to_string())
 }
 
-/// Agents using the common dir (no symlink; excludes hidden ones).
-pub fn universal_agents() -> Vec<&'static Agent> {
-    let agents: &'static [Agent] = *AGENTS;
-    agents
-        .iter()
-        .filter(|a| a.is_universal() && !a.hidden)
-        .collect()
-}
-
 /// An agent's global skills dir (None when global is unsupported).
 pub fn global_skills_dir(agent: &Agent, env: &Env) -> Option<PathBuf> {
     agent.global.resolve(env)
+}
+
+/// Lexically resolve `.`/`..` components for path comparison (no filesystem access).
+fn normalize_lexical(p: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for comp in p.components() {
+        match comp {
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// Whether an agent natively reads the canonical dir in the given scope, so no
+/// symlink is needed to expose installed skills to it.
+///
+/// - Project scope: its project skills dir is the common `.agents/skills`.
+/// - Global scope: its resolved global dir equals the global canonical dir
+///   `~/.agents/skills`. Agents with a vendor-specific global dir (e.g.
+///   Antigravity's `~/.gemini/config/skills`) are NOT native globally even when
+///   they are universal at project scope, and must be directory-linked instead.
+pub fn is_native(agent: &Agent, global: bool, env: &Env) -> bool {
+    if global {
+        agent.global.resolve(env).is_some_and(|dir| {
+            normalize_lexical(&dir) == normalize_lexical(&canonical_skills_dir(true, env))
+        })
+    } else {
+        agent.is_universal()
+    }
 }
 
 /// Canonical skills dir: `(global ? home : cwd)/.agents/skills`.
@@ -285,11 +312,13 @@ pub fn disabled_skills_dir(global: bool, env: &Env) -> PathBuf {
     base.join(DISABLED_SKILLS_DIR)
 }
 
-/// An agent's own skills dir (`None` for universal agents: canonical is their dir).
+/// An agent's own skills dir in the given scope.
+///
+/// `None` only when the global location cannot be resolved (e.g. an
+/// `env_var`-based global dir whose variable is unset). For scope-native agents
+/// the returned dir is the canonical dir itself; check [`is_native`] before
+/// treating it as a linkable location.
 pub fn agent_skills_dir(agent: &Agent, global: bool, env: &Env) -> Option<PathBuf> {
-    if agent.is_universal() {
-        return None;
-    }
     if global {
         global_skills_dir(agent, env)
     } else {
@@ -348,14 +377,6 @@ mod tests {
     }
 
     #[test]
-    fn hidden_agents_excluded_from_universal_list() {
-        let names: Vec<&str> = universal_agents().iter().map(|a| a.name.as_str()).collect();
-        assert!(!names.contains(&"dexto"));
-        assert!(!names.contains(&"universal"));
-        assert!(names.contains(&"amp"));
-    }
-
-    #[test]
     fn global_dir_resolution() {
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
@@ -371,6 +392,52 @@ mod tests {
         assert_eq!(
             global_skills_dir(amp, &env).unwrap(),
             tmp.path().join("config/agents/skills")
+        );
+    }
+
+    #[test]
+    fn is_native_is_scope_aware() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        let antigravity = get_agent("antigravity").unwrap();
+        let cline = get_agent("cline").unwrap();
+        let claude = get_agent("claude-code").unwrap();
+
+        // Project scope: agents sharing `.agents/skills` are native.
+        assert!(is_native(antigravity, false, &env));
+        assert!(is_native(cline, false, &env));
+        assert!(!is_native(claude, false, &env));
+
+        // Global scope: only a global dir equal to ~/.agents/skills is native.
+        // Antigravity reads ~/.gemini/config/skills globally, so it must be linked.
+        assert!(!is_native(antigravity, true, &env));
+        assert!(is_native(cline, true, &env));
+        assert!(!is_native(claude, true, &env));
+    }
+
+    #[test]
+    fn is_native_false_when_global_env_var_unset() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        // promptscript is universal at project scope but env-var-based globally.
+        let promptscript = get_agent("promptscript").unwrap();
+        assert!(is_native(promptscript, false, &env));
+        assert!(!is_native(promptscript, true, &env));
+        assert_eq!(agent_skills_dir(promptscript, true, &env), None);
+    }
+
+    #[test]
+    fn agent_skills_dir_resolves_per_scope() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        let antigravity = get_agent("antigravity").unwrap();
+        assert_eq!(
+            agent_skills_dir(antigravity, false, &env),
+            Some(tmp.path().join(".agents/skills"))
+        );
+        assert_eq!(
+            agent_skills_dir(antigravity, true, &env),
+            Some(tmp.path().join(".gemini/config/skills"))
         );
     }
 

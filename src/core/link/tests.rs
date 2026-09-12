@@ -71,6 +71,113 @@ fn link_agent_global_links_home_dir() {
 }
 
 #[test]
+fn link_agent_global_links_project_universal_agent_with_vendor_dir() {
+    // Antigravity is universal at project scope but reads the vendor-specific
+    // ~/.gemini/config/skills dir globally — global scope needs a real link.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let env = split_env(&tmp);
+    // Global gate: the parent of the agent skills dir must exist.
+    fs::create_dir_all(env.home.join(".gemini/config")).unwrap();
+    let agent = get_agent("antigravity").unwrap();
+
+    let outcome = link_agent(agent, true, &env, false);
+    assert!(
+        matches!(
+            outcome,
+            LinkOutcome::Linked {
+                backup_dir: None,
+                ..
+            }
+        ),
+        "got {outcome:?}"
+    );
+    let link = env.home.join(".gemini/config/skills");
+    assert!(link.is_symlink());
+    assert_eq!(
+        fs::read_link(&link).unwrap(),
+        Path::new("../../.agents/skills")
+    );
+    assert!(is_agent_linked(agent, true, &env));
+
+    // A globally installed skill is visible through the link.
+    let src = tmp.path().join("src-skill");
+    let skill = write_and_parse_skill(&src, "pdf");
+    install_skill(&skill, true, &env);
+    assert!(link.join("pdf/SKILL.md").exists());
+
+    // Unlink restores an empty real dir and disconnects cleanly.
+    assert!(matches!(
+        unlink_agent(agent, true, &env),
+        LinkOutcome::Unlinked { .. }
+    ));
+    assert!(!link.is_symlink());
+    assert!(link.is_dir());
+    assert!(!is_agent_linked(agent, true, &env));
+}
+
+#[test]
+fn link_agent_global_skipped_when_global_root_missing() {
+    // Antigravity installed (marker ~/.gemini/antigravity) but the shared config
+    // root ~/.gemini/config absent: do not fabricate it — Skipped.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let env = split_env(&tmp);
+    fs::create_dir_all(env.home.join(".gemini/antigravity")).unwrap();
+    let agent = get_agent("antigravity").unwrap();
+
+    assert!(matches!(
+        link_agent(agent, true, &env, false),
+        LinkOutcome::Skipped
+    ));
+    assert!(!env.home.join(".gemini/config/skills").exists());
+}
+
+#[test]
+fn link_agent_global_native_agent_is_already_linked() {
+    // Cline's global dir is ~/.agents/skills itself — native globally too.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let env = split_env(&tmp);
+    let cline = get_agent("cline").unwrap();
+    assert!(matches!(
+        link_agent(cline, true, &env, false),
+        LinkOutcome::AlreadyLinked
+    ));
+    assert!(is_agent_linked(cline, true, &env));
+    assert!(matches!(
+        unlink_agent(cline, true, &env),
+        LinkOutcome::NotLinked
+    ));
+}
+
+#[test]
+fn link_agent_global_parks_existing_vendor_content() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let env = split_env(&tmp);
+    let existing = env.home.join(".gemini/config/skills/old-skill");
+    fs::create_dir_all(&existing).unwrap();
+    fs::write(existing.join("SKILL.md"), "x").unwrap();
+    let agent = get_agent("antigravity").unwrap();
+
+    match link_agent(agent, true, &env, false) {
+        LinkOutcome::Linked { .. } => {}
+        other => panic!("expected Linked, got {other:?}"),
+    }
+    let slot = env.home.join(".agents/backup-skills/antigravity");
+    assert!(slot.join("skills/old-skill/SKILL.md").exists());
+    assert!(env.home.join(".gemini/config/skills").is_symlink());
+
+    // Unlink restores the parked dir losslessly.
+    assert!(matches!(
+        unlink_agent(agent, true, &env),
+        LinkOutcome::Unlinked { .. }
+    ));
+    let restored = env.home.join(".gemini/config/skills");
+    assert!(restored.is_dir());
+    assert!(!restored.is_symlink());
+    assert!(restored.join("old-skill/SKILL.md").exists());
+    assert!(!slot.exists());
+}
+
+#[test]
 fn link_agent_is_idempotent() {
     let tmp = tempfile::TempDir::new().unwrap();
     let env = env_at(&tmp);

@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use crate::core::agents::{
     AGENTS, Env, agent_display, config_home, disabled_skills_dir, get_agent, home, is_installed,
+    is_native,
 };
 use crate::core::discover::{Skill, discover_skills, filter_skills};
 use crate::core::fetch::fetch_source;
@@ -275,10 +276,12 @@ impl Manager {
     /// refused only when the agent dir is a foreign symlink or a stale non-empty
     /// backup slot exists.
     ///
-    /// Universal agents (whose skills dir already is the canonical dir) report
-    /// [`LinkOutcome::AlreadyLinked`]. Agents whose root dir does not exist in
-    /// this scope are reported as [`LinkOutcome::Skipped`] (except
-    /// `claude-code`, the historical exception).
+    /// Agents native to the requested scope (whose skills dir already is that
+    /// scope's canonical dir) report [`LinkOutcome::AlreadyLinked`]. Nativeness
+    /// is scope-aware: e.g. Antigravity is native at project scope
+    /// (`.agents/skills`) but linked at global scope (`~/.gemini/config/skills`).
+    /// Agents whose root dir does not exist in this scope are reported as
+    /// [`LinkOutcome::Skipped`] (except `claude-code`, the historical exception).
     ///
     /// # Selection defaults
     ///
@@ -311,8 +314,10 @@ impl Manager {
     /// Link status of every installed agent in this scope.
     ///
     /// Only agents detected as installed locally (or already linked) are reported.
-    /// Agents that natively read the canonical dir (universal) report `canonical`;
-    /// agents connected via a directory-level symlink report `linked`.
+    /// Agents that natively read this scope's canonical dir report `canonical`;
+    /// agents connected via a directory-level symlink report `linked`. Both
+    /// classifications are scope-aware (an agent may be canonical at project
+    /// scope but linked at global scope).
     ///
     /// For unlinked, non-canonical agents the status classifies the agent dir's
     /// private content (`internal_skills` / `internal_others`, the same rules
@@ -328,11 +333,11 @@ impl Manager {
             .iter()
             .filter(|a| {
                 is_installed(a, &self.env)
-                    || (!a.is_universal() && is_agent_linked(a, global, &self.env))
+                    || (!is_native(a, global, &self.env) && is_agent_linked(a, global, &self.env))
             })
             .map(|a| {
+                let canonical = is_native(a, global, &self.env);
                 let linked = is_agent_linked(a, global, &self.env);
-                let canonical = a.is_universal();
                 // For unlinked, non-canonical agents, classify the private content
                 // of the agent's own skills dir (canonical/linked agents share the
                 // canonical dir, whose contents are shown by `list` instead).

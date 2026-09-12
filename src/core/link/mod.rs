@@ -23,7 +23,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::core::agents::{
-    Agent, Env, agent_skills_dir, canonical_skills_dir, disabled_skills_dir,
+    Agent, Env, agent_skills_dir, canonical_skills_dir, disabled_skills_dir, is_native,
 };
 use crate::core::link::backup::{
     PARKED_DIR_NAME, adopt_skills, backup_slot, cleanup_slot, migrate_from_backup, park_dir,
@@ -31,9 +31,10 @@ use crate::core::link::backup::{
 };
 use crate::core::link::path::{agent_root_exists, classify, entry_name, points_to};
 
-/// Whether an agent's skills dir is linked to the canonical dir (universal = always).
+/// Whether an agent's skills dir is linked to the canonical dir in the given
+/// scope (a scope-native agent reads the canonical dir directly = always).
 pub fn is_agent_linked(agent: &Agent, global: bool, env: &Env) -> bool {
-    if agent.is_universal() {
+    if is_native(agent, global, env) {
         return true;
     }
     match agent_skills_dir(agent, global, env) {
@@ -49,11 +50,12 @@ pub fn is_agent_linked(agent: &Agent, global: bool, env: &Env) -> bool {
 
 /// Link an agent's skills dir to the canonical dir (see [`LinkOutcome`] for cases).
 ///
-/// Gating: non-universal agents are skipped when their root dir does not exist in the
+/// Gating: non-native agents are skipped when their root dir does not exist in the
 /// given scope (project: first path component of `skills_dir`, e.g. `.windsurf`;
-/// global: the parent of the agent's skills dir, e.g. `~/.claude`) — this avoids
-/// fabricating agent presence. `claude-code` is the historical exception: it is
-/// linked at project level even when `.claude/` does not exist yet.
+/// global: the parent of the agent's skills dir, e.g. `~/.claude` or
+/// `~/.gemini/config` for Antigravity) — this avoids fabricating agent presence.
+/// `claude-code` is the historical exception: it is linked at project level even
+/// when `.claude/` does not exist yet.
 ///
 /// Content handling: an empty dir is replaced by the link directly; any non-empty
 /// dir is parked whole into the agent's backup slot (one atomic rename) before
@@ -62,15 +64,17 @@ pub fn is_agent_linked(agent: &Agent, global: bool, env: &Env) -> bool {
 /// `disabled-skills` dir stay disabled). Refusal is reserved for a foreign
 /// symlink or a previous backup that is still parked.
 pub fn link_agent(agent: &Agent, global: bool, env: &Env, migrate: bool) -> LinkOutcome {
-    // Universal agents use the canonical dir natively — nothing to link.
-    if agent.is_universal() {
+    // Scope-native agents use the canonical dir directly — nothing to link.
+    // Note: an agent universal at project scope (e.g. Antigravity) may still
+    // have a vendor-specific global dir that needs a real symlink.
+    if is_native(agent, global, env) {
         return LinkOutcome::AlreadyLinked;
     }
 
     let Some(agent_dir) = agent_skills_dir(agent, global, env) else {
-        return LinkOutcome::Failed {
-            error: format!("agent '{}' has no skills dir for this scope", agent.name),
-        };
+        // No resolvable dir in this scope/environment (e.g. an env-var-based
+        // global dir whose variable is unset) — nothing to link here.
+        return LinkOutcome::Skipped;
     };
 
     if !agent_root_exists(agent, global, env, &agent_dir) && agent.name != "claude-code" {
@@ -196,8 +200,8 @@ pub fn link_agent(agent: &Agent, global: bool, env: &Env, migrate: bool) -> Link
 /// replaced only when a backup is pending and it is empty (or the restore fails
 /// with a clear error); foreign symlinks are left alone.
 pub fn unlink_agent(agent: &Agent, global: bool, env: &Env) -> LinkOutcome {
-    // Universal agents use the canonical dir natively — nothing to unlink.
-    if agent.is_universal() {
+    // Scope-native agents use the canonical dir directly — nothing to unlink.
+    if is_native(agent, global, env) {
         return LinkOutcome::NotLinked;
     }
 

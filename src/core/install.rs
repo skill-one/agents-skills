@@ -8,7 +8,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::core::agents::{Env, canonical_skills_dir, disabled_skills_dir, universal_agents};
+use crate::core::agents::{
+    AGENTS, Env, agent_skills_dir, canonical_skills_dir, disabled_skills_dir, is_native,
+};
 use crate::core::discover::{Skill, parse_skill_md};
 use crate::error::Result;
 
@@ -220,21 +222,19 @@ pub fn list_installed_skills(
             continue;
         };
         let mut agents: Vec<String> = Vec::new();
-        // Universal agents use the canonical dir directly.
-        for agent in universal_agents() {
+        for agent in AGENTS.iter() {
             if !agent_filter.is_empty() && !agent_filter.iter().any(|a| a == &agent.name) {
                 continue;
             }
-            agents.push(agent.name.to_string());
-        }
-        for agent in crate::core::agents::AGENTS
-            .iter()
-            .filter(|a| !a.is_universal())
-        {
-            if !agent_filter.is_empty() && !agent_filter.iter().any(|a| a == &agent.name) {
+            // Scope-native agents read the canonical dir directly. Hidden
+            // agents stay excluded from this group (they never did before).
+            if is_native(agent, global, env) {
+                if !agent.hidden {
+                    agents.push(agent.name.clone());
+                }
                 continue;
             }
-            let Some(base) = crate::core::agents::agent_skills_dir(agent, global, env) else {
+            let Some(base) = agent_skills_dir(agent, global, env) else {
                 continue;
             };
             let candidate = base.join(sanitize_name(&skill.name));
@@ -456,6 +456,49 @@ mod tests {
         assert_eq!(installed.len(), 1);
         assert_eq!(installed[0].name, "pdf");
         assert_eq!(installed[0].scope, "project");
+    }
+
+    #[test]
+    fn list_global_skills_distinguishes_native_and_linkable_agents() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut env = Env::new(
+            tmp.path().join("home"),
+            tmp.path().join("config"),
+            tmp.path().join("project"),
+        );
+        env.set_probe_system_dirs(false);
+        env.set_vars(std::collections::HashMap::new());
+
+        let src = tmp.path().join("src-skill");
+        let skill = write_skill(&src, "pdf");
+        install_skill(&skill, true, &env);
+
+        // Global scope: cline natively reads ~/.agents/skills; antigravity reads
+        // ~/.gemini/config/skills and is not connected yet.
+        let installed = list_installed_skills(&env, true, &[]);
+        assert_eq!(installed.len(), 1);
+        assert!(installed[0].agents.contains(&"cline".to_string()));
+        assert!(!installed[0].agents.contains(&"antigravity".to_string()));
+        // Hidden global-native agents stay excluded from the visibility list.
+        assert!(!installed[0].agents.contains(&"dexto".to_string()));
+        assert!(!installed[0].agents.contains(&"loaf".to_string()));
+
+        // Project scope has no canonical dir — nothing listed.
+        assert!(list_installed_skills(&env, false, &[]).is_empty());
+
+        // After linking Antigravity's global dir, the skill becomes visible to it.
+        std::fs::create_dir_all(tmp.path().join("home/.gemini/config")).unwrap();
+        assert!(matches!(
+            link_agent(
+                crate::core::agents::get_agent("antigravity").unwrap(),
+                true,
+                &env,
+                false
+            ),
+            LinkOutcome::Linked { .. }
+        ));
+        let installed = list_installed_skills(&env, true, &[]);
+        assert!(installed[0].agents.contains(&"antigravity".to_string()));
     }
 
     #[test]

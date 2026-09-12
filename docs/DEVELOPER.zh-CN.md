@@ -103,8 +103,13 @@ agent 表位于 `src/core/agents.jsonl` —— 每个 agent 一行 JSON,编译�
 | `{"env_var": {"var": "...", "path": "..."}}` | `$VAR/<path>`;变量未设置时不匹配 |
 | `{"system": "/abs/path"}` | 绝对路径;仅开启系统探测时才检查 |
 
-universal agents(`skills_dir` 为 `.agents/skills` 的 agent)共用规范目录,
-无需符号链接;`universal` 伪 agent 的 `"detect": []` 使它永远不会被检测为已安装。
+agent 是否需要符号链接**按作用域分别判定**(对应 `agents.rs` 中的
+`is_native`):项目级下,`skills_dir` 为 `.agents/skills` 的 agent 共用规范目录,
+无需链接;全局级下,将解析后的 `global` 路径规格与 `~/.agents/skills` 比较——
+只有全局目录恰好等于它的 agent(如 cline、warp)在全局级才是原生的。全局目录
+是厂商私有路径的 agent(如 Antigravity 的 `~/.gemini/config/skills`)虽然在项目
+级是 universal,但在全局级仍需建立真实的目录级符号链接。`universal` 伪 agent
+的 `"detect": []` 使它永远不会被检测为已安装。
 
 ## 开发
 
