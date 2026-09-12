@@ -562,6 +562,6 @@ mod tests {
     #[test]
     fn agent_table_row_count() {
         let agents: &'static [Agent] = *AGENTS;
-        assert_eq!(agents.len(), 83);
+        assert_eq!(agents.len(), 84);
     }
 }

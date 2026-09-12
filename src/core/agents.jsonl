@@ -66,6 +66,7 @@
 {"name":"warp","display":"Warp","skills_dir":".agents/skills","global":{"home":".agents/skills"},"detect":[{"home":".warp"}]}
 {"name":"windsurf","display":"Windsurf","skills_dir":".windsurf/skills","global":{"home":".codeium/windsurf/skills"},"detect":[{"home":".codeium/windsurf"}]}
 {"name":"workbuddy","display":"WorkBuddy","skills_dir":".workbuddy/skills","global":{"home":".workbuddy/skills"},"detect":[{"home":".workbuddy"},{"cwd":".workbuddy"}]}
+{"name":"workbuddy-ai","display":"WorkBuddy AI","skills_dir":".workbuddy-ai/skills","global":{"home":".workbuddy-ai/skills"},"detect":[{"home":".workbuddy-ai"},{"cwd":".workbuddy-ai"}]}
 {"name":"zed","display":"Zed","skills_dir":".agents/skills","global":{"home":".agents/skills"},"detect":[{"config":"zed"},{"env_var":{"var":"APPDATA","path":"Zed"}}]}
 {"name":"zcode","display":"ZCode","skills_dir":".zcode/skills","global":{"home":".zcode/skills"},"detect":[{"home":".zcode"},{"system":"/Applications/ZCode.app"}]}
 {"name":"zencoder","display":"Zencoder","skills_dir":".zencoder/skills","global":{"home":".zencoder/skills"},"detect":[{"home":".zencoder"}]}
