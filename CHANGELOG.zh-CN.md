@@ -9,6 +9,14 @@
 
 ## [Unreleased](未发布)
 
+## [0.12.3] — 2026-09-12
+
+### 新增
+
+- (agents) 支持 WorkBuddy 国际版 WorkBuddy AI:项目级目录
+  `.workbuddy-ai/skills`,全局目录 `~/.workbuddy-ai/skills`,通过
+  `~/.workbuddy-ai` 或当前项目内的 `.workbuddy-ai` 检测安装。
+
 ## [0.12.2] — 2026-09-12
 
 ### 修复
@@ -168,7 +176,8 @@
 - chore:升级 git2 至 0.21 以修复 RUSTSEC 安全通告。
 - chore:双许可证、GitHub Actions、crates.io 发布元数据。
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.12.2...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.12.3...HEAD
+[0.12.3]: https://github.com/skill-one/agents-skills/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/skill-one/agents-skills/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/skill-one/agents-skills/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/skill-one/agents-skills/compare/v0.11.0...v0.12.0

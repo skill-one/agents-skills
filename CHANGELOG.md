@@ -9,6 +9,14 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 ## [Unreleased]
 
+## [0.12.3] — 2026-09-12
+
+### Added
+
+- (agents) Support WorkBuddy AI, the international edition of WorkBuddy:
+  project dir `.workbuddy-ai/skills`, global dir `~/.workbuddy-ai/skills`,
+  detected via `~/.workbuddy-ai` or `.workbuddy-ai` in the current project.
+
 ## [0.12.2] — 2026-09-12
 
 ### Fixed
@@ -180,7 +188,8 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 - chore: upgrade git2 to 0.21 to fix RUSTSEC advisories.
 - chore: dual license, GitHub Actions, crates.io release metadata.
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.12.2...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.12.3...HEAD
+[0.12.3]: https://github.com/skill-one/agents-skills/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/skill-one/agents-skills/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/skill-one/agents-skills/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/skill-one/agents-skills/compare/v0.11.0...v0.12.0
