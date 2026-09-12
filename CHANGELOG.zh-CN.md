@@ -9,6 +9,24 @@
 
 ## [Unreleased](未发布)
 
+## [0.12.2] — 2026-09-12
+
+### 修复
+
+- (link) agent 的 canonical/link 判定现在按作用域区分。项目级 universal
+  (`.agents/skills`)但全局目录为厂商路径的 agent(如 Antigravity 的
+  `~/.gemini/config/skills`、Codex 的 `~/.codex/skills`)此前在全局级也被
+  当作"已链接"短路,导致装在 `~/.agents/skills` 的全局技能永远无法被 agent
+  读取,`agent --status` 还会误报 `canonical`。现在全局级会建立真实的目录级
+  符号链接(`--link` / `--unlink` / `--status` 均按作用域工作)。
+- (link) 全局目录无法解析(env 变量未设置)时改为报告 skipped,不再报失败。
+
+### 变更
+
+- (库) 新增按作用域判定的 `is_native(agent, global, env)`;移除不再
+  使用的 `universal_agents()`;`agent_skills_dir()` 对项目级 universal 的
+  agent 也会解析其真实全局目录,而非返回 `None`。
+
 ## [0.12.1] — 2026-09-11
 
 ### 修复
@@ -150,7 +168,8 @@
 - chore:升级 git2 至 0.21 以修复 RUSTSEC 安全通告。
 - chore:双许可证、GitHub Actions、crates.io 发布元数据。
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.12.2...HEAD
+[0.12.2]: https://github.com/skill-one/agents-skills/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/skill-one/agents-skills/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/skill-one/agents-skills/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/skill-one/agents-skills/compare/v0.10.1...v0.11.0

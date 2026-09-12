@@ -9,6 +9,27 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 ## [Unreleased]
 
+## [0.12.2] — 2026-09-12
+
+### Fixed
+
+- (link) Agent canonical/link detection is now scope-aware. Agents universal at
+  project scope (`.agents/skills`) but with a vendor-specific global dir
+  (e.g. Antigravity's `~/.gemini/config/skills`, Codex's `~/.codex/skills`)
+  were treated as "already linked" at global scope too, so global installs in
+  `~/.agents/skills` never reached the agent and `agent --status` falsely
+  reported `canonical`. They now get a real directory-level symlink at
+  global scope (`--link` / `--unlink` / `--status` all honor scope).
+- (link) An agent whose global dir cannot be resolved (unset env var) is
+  now reported as skipped instead of a failure.
+
+### Changed
+
+- (library) Added scope-aware `is_native(agent, global, env)`; removed the
+  now-unused `universal_agents()` helper; `agent_skills_dir()` resolves
+  the agent's real global dir instead of returning `None` for
+  project-universal agents.
+
 ## [0.12.1] — 2026-09-11
 
 ### Fixed
@@ -159,7 +180,8 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 - chore: upgrade git2 to 0.21 to fix RUSTSEC advisories.
 - chore: dual license, GitHub Actions, crates.io release metadata.
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.12.2...HEAD
+[0.12.2]: https://github.com/skill-one/agents-skills/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/skill-one/agents-skills/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/skill-one/agents-skills/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/skill-one/agents-skills/compare/v0.10.1...v0.11.0
