@@ -20,7 +20,11 @@ fn skill_filters_merges_args_and_at_filter() {
 fn resolve_to_remove_matches_on_disk_names() {
     let installed = vec!["pdf".to_string()];
     let disabled = vec!["legacy".to_string()];
-    let requested = vec!["pdf".to_string(), "legacy".to_string(), "unknown".to_string()];
+    let requested = vec![
+        "pdf".to_string(),
+        "legacy".to_string(),
+        "unknown".to_string(),
+    ];
 
     // Only on-disk dir names resolve; "unknown" matches nothing.
     assert_eq!(

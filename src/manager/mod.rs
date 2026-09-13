@@ -626,11 +626,7 @@ impl Manager {
 
         // Resolve the skill names to remove against the on-disk dir names.
         let requested: Vec<String> = if req.all {
-            installed
-                .iter()
-                .chain(disabled.iter())
-                .cloned()
-                .collect()
+            installed.iter().chain(disabled.iter()).cloned().collect()
         } else {
             req.skills.clone()
         };

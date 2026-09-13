@@ -492,7 +492,10 @@ mod tests {
         fs::write(src.join("SKILL.md"), "v2").unwrap();
         let r = install_skill(&skill, false, &env);
         assert!(r.success, "err={:?}", r.error);
-        assert_eq!(fs::read_to_string(canonical_base.join("pdf/SKILL.md")).unwrap(), "v2");
+        assert_eq!(
+            fs::read_to_string(canonical_base.join("pdf/SKILL.md")).unwrap(),
+            "v2"
+        );
 
         // No staging or backup dirs may survive a successful install.
         let leftovers: Vec<_> = fs::read_dir(&canonical_base)

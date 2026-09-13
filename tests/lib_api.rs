@@ -549,4 +549,3 @@ fn lib_disable_global_scope_moves_home_skill() {
     assert!(!home.join(".agents/skills/pdf").exists());
     assert!(home.join(".agents/disabled-skills/pdf/SKILL.md").exists());
 }
-
