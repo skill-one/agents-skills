@@ -1,4 +1,4 @@
-//! End-to-end tests for the `list` command: global default, `--project`, JSON, invalid agent.
+//! End-to-end tests for the `list` command: global default, `--project`, JSON.
 
 mod common;
 
@@ -42,7 +42,7 @@ fn list_empty_project_prints_hint() {
 }
 
 #[test]
-fn list_json_reports_name_scope_and_enabled() {
+fn list_json_reports_name_and_enabled() {
     let p = TestProject::new();
     let src = p.write_skill_source("my-skill", "pdf");
 
@@ -56,7 +56,6 @@ fn list_json_reports_name_scope_and_enabled() {
         .assert()
         .success()
         .stdout(predicate::str::contains("\"name\": \"pdf\""))
-        .stdout(predicate::str::contains("\"scope\": \"project\""))
         .stdout(predicate::str::contains("\"enabled\": true"));
 }
 
@@ -120,46 +119,6 @@ fn list_plain_hides_agents() {
         .stdout(predicate::str::contains("pdf"))
         .stdout(predicate::str::contains("enabled"))
         .stdout(predicate::str::contains("Agents").not());
-}
-
-#[test]
-fn list_json_reports_agents_and_agent_filter() {
-    let p = TestProject::new();
-    let src = p.write_skill_source("my-skill", "pdf");
-
-    p.skills()
-        .args(["add", src.to_str().unwrap(), "--project", "."])
-        .assert()
-        .success();
-
-    // JSON keeps the machine-readable agents visibility list.
-    p.skills()
-        .args(["list", "--project", ".", "--json"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("\"agents\":"));
-
-    // -a filters by a specific agent; universal agents always match.
-    p.skills()
-        .args(["list", "--project", ".", "-a", "codex"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("pdf"));
-}
-
-#[test]
-fn list_invalid_agent_exits_nonzero() {
-    let p = TestProject::new();
-    let home = p.path().join("home");
-    std::fs::create_dir_all(&home).unwrap();
-
-    p.skills()
-        .env("HOME", &home)
-        .args(["list", "--project", ".", "-a", "not-a-real-agent"])
-        .assert()
-        .failure()
-        .code(1)
-        .stdout(predicate::str::contains("Invalid agents"));
 }
 
 #[test]

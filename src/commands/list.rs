@@ -7,10 +7,7 @@ use agents_skills::{Env, ListRequest, ListedSkill, Manager};
 
 pub fn run(manager: &Manager, args: ListArgs) -> Result<()> {
     let global = args.project.is_none();
-    let req = ListRequest {
-        global,
-        agents: args.agent.clone(),
-    };
+    let req = ListRequest { global };
     let listed = match manager.list(&req) {
         Ok(l) => l,
         Err(e) => return fail_agents(e),

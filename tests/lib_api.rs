@@ -42,11 +42,10 @@ fn lib_add_list_remove_roundtrip() {
     assert!(outcome.failed.is_empty());
     assert!(cwd.join(".agents/skills/pdf/SKILL.md").exists());
 
-    // List finds it, with scope info.
+    // List finds it.
     let listed = manager.list(&ListRequest::default()).unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].name, "pdf");
-    assert_eq!(listed[0].scope, "project");
     assert!(listed[0].enabled);
 
     // Remove it.
@@ -134,7 +133,6 @@ fn lib_list_json_shape() {
     let listed = manager.list(&ListRequest::default()).unwrap();
     let json = serde_json::to_string_pretty(&listed).unwrap();
     assert!(json.contains("\"name\": \"pdf\""));
-    assert!(json.contains("\"scope\": \"project\""));
     assert!(json.contains("\"enabled\": true"));
 }
 
@@ -350,53 +348,6 @@ fn lib_agent_status_orders_canonical_first() {
     let names: Vec<&str> = statuses.iter().map(|s| s.name.as_str()).collect();
     // canonical agents come first; the rest keep table order.
     assert_eq!(names, vec!["cline", "claude-code"]);
-}
-
-#[test]
-fn lib_list_agent_filter_and_visibility() {
-    let tmp = tempfile::TempDir::new().unwrap();
-    let cwd = tmp.path().join("project");
-    std::fs::create_dir_all(&cwd).unwrap();
-
-    let manager = Manager::builder()
-        .home(tmp.path().join("home"))
-        .config(tmp.path().join("config"))
-        .cwd(cwd.clone())
-        .build();
-
-    let src = write_skill_source(tmp.path(), "src", "pdf");
-    manager
-        .add(&AddRequest {
-            source: src.display().to_string(),
-            ..Default::default()
-        })
-        .unwrap();
-
-    // All universal agents see the skill by default (agents holds display names).
-    let all = manager.list(&ListRequest::default()).unwrap();
-    assert_eq!(all.len(), 1);
-    assert!(all[0].agents.contains(&"Codex".to_string()));
-
-    // Filtering to a universal agent keeps the skill visible.
-    let filtered = manager
-        .list(&ListRequest {
-            agents: vec!["codex".to_string()],
-            ..Default::default()
-        })
-        .unwrap();
-    assert_eq!(filtered.len(), 1);
-    assert!(filtered[0].agents.contains(&"Codex".to_string()));
-
-    // Filtering to an uninstalled, unlinked agent keeps the skill listed but
-    // reports no visible agents (matches the CLI's -a behavior).
-    let none = manager
-        .list(&ListRequest {
-            agents: vec!["claude-code".to_string()],
-            ..Default::default()
-        })
-        .unwrap();
-    assert_eq!(none.len(), 1);
-    assert!(none[0].agents.is_empty());
 }
 
 #[test]

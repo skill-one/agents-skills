@@ -82,13 +82,12 @@ agents-skills list [options]
 | 选项                    | 说明                           |
 | --------------------- | ---------------------------- |
 | `-p, --project <dir>` | 列出指定项目目录的技能（默认全局）            |
-| `-a, --agent <a>...`  | 按指定 Agent 过滤                 |
 | `--json`              | JSON 输出（机器可读，含 `enabled` 字段） |
 
 ```bash
 agents-skills list
 agents-skills list --json
-agents-skills list --project . --agent claude-code
+agents-skills list --project .
 ```
 
 ## disable / enable

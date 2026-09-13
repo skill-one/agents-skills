@@ -199,9 +199,6 @@ pub struct Agent {
     /// Install detection rules (any match = installed; empty = never detected).
     #[serde(default)]
     pub detect: Vec<PathSpec>,
-    /// Whether it is excluded from the universal agents list (default false).
-    #[serde(default)]
-    pub hidden: bool,
 }
 
 impl Agent {
@@ -250,13 +247,6 @@ pub static AGENTS: LazyLock<&'static [Agent]> = LazyLock::new(|| {
 pub fn get_agent(name: &str) -> Option<&'static Agent> {
     let agents: &'static [Agent] = *AGENTS;
     agents.iter().find(|a| a.name == name)
-}
-
-/// Display name of an agent (falls back to the raw name).
-pub fn agent_display(name: &str) -> String {
-    get_agent(name)
-        .map(|a| a.display.to_string())
-        .unwrap_or_else(|| name.to_string())
 }
 
 /// An agent's global skills dir (None when global is unsupported).
@@ -538,7 +528,6 @@ mod tests {
         );
         assert_eq!(table.len(), 1);
         assert!(table[0].is_universal());
-        assert!(!table[0].hidden);
     }
 
     #[test]

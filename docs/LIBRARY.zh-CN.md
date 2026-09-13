@@ -62,7 +62,7 @@ fn main() -> agents_skills::Result<()> {
 | ------------------ | ----------------------------------------------------------------------------------------------------------- |
 | [`AddRequest`]     | `source: String`、`skills: Vec<String>`（`"*"` 或具体名，空 = 全部）、`list_only: bool`                     |
 | [`AgentRequest`]   | `agents: Vec<String>`、`unlink: bool`、`migrate: bool`                                                      |
-| [`ListRequest`]    | `agents: Vec<String>`（空 = 全部 agent）                                                                    |
+| [`ListRequest`]    | —（作用域仅由 `global: bool` 决定）                                                                         |
 | [`RemoveRequest`]  | `skills: Vec<String>`、`all: bool`                                                                          |
 | [`DisableRequest`] | `skills: Vec<String>`、`all: bool`                                                                          |
 | [`EnableRequest`]  | `skills: Vec<String>`、`all: bool`                                                                          |
@@ -70,8 +70,9 @@ fn main() -> agents_skills::Result<()> {
 所有请求结构体带 `global: bool` 字段：`true` 操作全局 `~/.agents/skills`（CLI 默认），
 `false` 操作项目级 `./.agents/skills`（对应 CLI 的 `--project`）。项目根取自
 `Env.cwd`（可用 `Manager::builder().cwd()` 覆盖，对应 CLI 的 `--project <目录>`）。
-`AgentRequest` 与 `ListRequest` 的 `agents` 字段用于限定 agent（`"*"` 或具体名，
-空 = 自动探测）。
+`AgentRequest` 的 `agents` 字段用于限定 agent（`"*"` 或具体名，
+空 = 自动探测）。哪些 agent 能看到某个技能是作用域级状态（由
+[`Manager::agent_status`] 查询），不是 per-skill 属性。
 
 ### 与 CLI 的对应约定
 
@@ -101,7 +102,7 @@ let outcome = manager.add(&AddRequest {
     ..Default::default()
 })?;
 
-// 列出技能（global 字段选作用域；--json / -a agent 为 CLI 对应能力）
+// 列出技能（global 字段选作用域；--json 为 CLI 对应能力）
 let skills = manager.list(&ListRequest::default())?;
 let json = serde_json::to_string_pretty(&skills)?; // CLI 的 list --json
 

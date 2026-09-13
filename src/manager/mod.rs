@@ -6,8 +6,7 @@
 use std::path::PathBuf;
 
 use crate::core::agents::{
-    AGENTS, Env, agent_display, config_home, disabled_skills_dir, get_agent, home, is_installed,
-    is_native,
+    AGENTS, Env, config_home, disabled_skills_dir, home, is_installed, is_native,
 };
 use crate::core::discover::{Skill, discover_skills, filter_skills};
 use crate::core::fetch::fetch_source;
@@ -361,7 +360,9 @@ impl Manager {
     ///
     /// Scans the canonical skills directory (plus the disabled dir), producing
     /// serde-serializable [`ListedSkill`] values — the same shape emitted by
-    /// `list --json`.
+    /// `list --json`. Which agents see a skill is scope-level state, not
+    /// per-skill: every linked or native agent sees all skills in the
+    /// canonical dir. Use [`Manager::agent_status`] to inspect it.
     ///
     /// # Examples
     ///
@@ -375,40 +376,22 @@ impl Manager {
     /// }
     /// # Ok::<(), agents_skills::Error>(())
     /// ```
-    ///
-    /// # Errors
-    ///
-    /// [`SkillsError::InvalidAgents`] when `agents` names an unknown agent.
     pub fn list(&self, req: &ListRequest) -> Result<Vec<ListedSkill>> {
-        let invalid: Vec<String> = req
-            .agents
-            .iter()
-            .filter(|a| get_agent(a).is_none())
-            .cloned()
-            .collect();
-        if !invalid.is_empty() {
-            return Err(SkillsError::InvalidAgents(invalid.join(", ")));
-        }
-
-        let installed = list_installed_skills(&self.env, req.global, &req.agents);
+        let installed = list_installed_skills(&self.env, req.global);
         let disabled = list_disabled_skills(&self.env, req.global);
 
         let mut out = Vec::new();
-        for s in &installed {
+        for s in installed {
             out.push(ListedSkill {
-                name: s.name.clone(),
-                path: s.canonical_path.clone(),
-                scope: s.scope.clone(),
-                agents: s.agents.iter().map(|a| agent_display(a)).collect(),
+                name: s.name,
+                path: s.canonical_path,
                 enabled: true,
             });
         }
-        for s in &disabled {
+        for s in disabled {
             out.push(ListedSkill {
-                name: s.name.clone(),
-                path: s.canonical_path.clone(),
-                scope: s.scope.clone(),
-                agents: Vec::new(),
+                name: s.name,
+                path: s.canonical_path,
                 enabled: false,
             });
         }

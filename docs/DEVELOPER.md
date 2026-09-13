@@ -92,8 +92,7 @@ listing order.
   "display": "Claude Code",   // required, human-readable name
   "skills_dir": ".claude/skills", // required, project-level skills dir (relative to cwd)
   "global": { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude", "path": "skills" } },
-  "detect": [ { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude" } } ],
-  "hidden": false             // optional, hide from the universal agents list (default false)
+  "detect": [ { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude" } } ]
 }
 ```
 

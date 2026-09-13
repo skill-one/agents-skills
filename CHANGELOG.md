@@ -7,7 +7,17 @@ the project adheres to [Semantic Versioning](https://semver.org/): while in
 
 For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
-## [Unreleased]
+## [0.14.0] — 2026-09-13
+
+### Removed
+
+- **(breaking)** `ListedSkill.scope` and `ListedSkill.agents` (library API and
+  `list --json`), together with the `list -a/--agent` flag and
+  `ListRequest.agents`. Agent visibility is scope-level state — every linked
+  or native agent sees all skills in the canonical dir — so a per-skill field
+  was redundant; derive it from `agent --status` (`linked || canonical`)
+  instead. `ListedSkill` now carries `name`/`path`/`enabled` only. The
+  unused `Agent.hidden` flag and `agent_display()` helper are also dropped.
 
 ## [0.13.0] — 2026-09-13
 

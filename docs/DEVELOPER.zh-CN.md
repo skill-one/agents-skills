@@ -84,8 +84,7 @@ agent 表位于 `src/core/agents.jsonl` —— 每个 agent 一行 JSON,编译�
   "display": "Claude Code",   // 必填,人类可读名称
   "skills_dir": ".claude/skills", // 必填,项目级技能目录(相对 cwd)
   "global": { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude", "path": "skills" } },
-  "detect": [ { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude" } } ],
-  "hidden": false             // 可选,是否从 universal agents 列表隐藏(默认 false)
+  "detect": [ { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude" } } ]
 }
 ```
 

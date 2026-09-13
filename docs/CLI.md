@@ -88,13 +88,12 @@ agents-skills list [options]
 | Option                | Description                                                  |
 | --------------------- | ------------------------------------------------------------ |
 | `-p, --project <dir>` | List skills in the given project directory (default: global) |
-| `-a, --agent <a>...`  | Filter by the given agents                                   |
 | `--json`              | JSON output (machine-readable, includes the `enabled` field) |
 
 ```bash
 agents-skills list
 agents-skills list --json
-agents-skills list --project . --agent claude-code
+agents-skills list --project .
 ```
 
 ## disable / enable

@@ -66,7 +66,7 @@ overrides.
 | ------------------ | ----------------------------------------------------------------------------------------------------------- |
 | [`AddRequest`]     | `source: String`, `skills: Vec<String>` (`"*"` or specific names, empty = all), `list_only: bool`           |
 | [`AgentRequest`]   | `agents: Vec<String>`, `unlink: bool`, `migrate: bool`                                                      |
-| [`ListRequest`]    | `agents: Vec<String>` (empty = all agents)                                                                  |
+| [`ListRequest`]    | — (scope only, via `global: bool`)                                                                          |
 | [`RemoveRequest`]  | `skills: Vec<String>`, `all: bool`                                                                          |
 | [`DisableRequest`] | `skills: Vec<String>`, `all: bool`                                                                          |
 | [`EnableRequest`]  | `skills: Vec<String>`, `all: bool`                                                                          |
@@ -75,9 +75,10 @@ All request structs carry a `global: bool` field: `true` operates on the
 global `~/.agents/skills` (the CLI default), `false` on the project-level
 `./.agents/skills` (the CLI's `--project`). The project root comes from
 `Env.cwd` (overridable via `Manager::builder().cwd()`, corresponding to the
-CLI's `--project <dir>`). The `agents` field of `AgentRequest` and
-`ListRequest` restricts the agents (`"*"` or specific names, empty =
-auto-detect).
+CLI's `--project <dir>`). The `agents` field of [`AgentRequest`] restricts the
+agents (`"*"` or specific names, empty = auto-detect). Which agents see a
+skill is scope-level state, reported by [`Manager::agent_status`] — not a
+per-skill property.
 
 ### Correspondence with the CLI
 
@@ -113,7 +114,7 @@ let outcome = manager.add(&AddRequest {
     ..Default::default()
 })?;
 
-// List skills (the global field picks the scope; --json / -a <agent> are the CLI counterparts)
+// List skills (the global field picks the scope; --json is the CLI counterpart)
 let skills = manager.list(&ListRequest::default())?;
 let json = serde_json::to_string_pretty(&skills)?; // the CLI's list --json
 

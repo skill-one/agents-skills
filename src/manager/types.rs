@@ -58,13 +58,11 @@ impl AddRequest {
 
 /// Request for [`Manager::list`].
 ///
-/// `Default` lists project-scope skills across all agents.
+/// `Default` lists project-scope skills.
 #[derive(Debug, Clone, Default)]
 pub struct ListRequest {
     /// List global skills instead of project skills.
     pub global: bool,
-    /// Filter by agent names; empty = all agents.
-    pub agents: Vec<String>,
 }
 
 /// Request for [`Manager::remove`].
@@ -229,10 +227,6 @@ pub struct ListedSkill {
     pub name: String,
     /// Canonical directory path.
     pub path: PathBuf,
-    /// `"project"` or `"global"`.
-    pub scope: String,
-    /// Agent display names this skill is linked to.
-    pub agents: Vec<String>,
     /// Whether the skill is enabled (`true`) or parked in `disabled-skills` (`false`).
     pub enabled: bool,
 }

@@ -7,7 +7,17 @@
 
 英文版见 [CHANGELOG.md](CHANGELOG.md)。
 
-## [Unreleased](未发布)
+## [0.14.0] — 2026-09-13
+
+### 移除
+
+- **(breaking)** 移除 `ListedSkill.scope` 和 `ListedSkill.agents`（库 API 与
+  `list --json`），以及 `list -a/--agent` 旗标和 `ListRequest.agents`。agent
+  可见性是作用域级状态——每个已链接或 native 的 agent 都能看到规范目录里的
+  全部技能——per-skill 字段是冗余的，改由 `agent --status`
+  （`linked || canonical`）推导。`ListedSkill` 现在只剩
+  `name`/`path`/`enabled`。同时移除不再使用的 `Agent.hidden` 字段和
+  `agent_display()` 辅助函数。
 
 ## [0.13.0] — 2026-09-13
 

@@ -76,9 +76,6 @@ pub struct ListArgs {
     /// Operate on project scope in the given directory instead of global
     #[arg(short = 'p', long = "project", value_name = "DIR")]
     pub project: Option<PathBuf>,
-    /// Filter by specific agents
-    #[arg(short = 'a', long = "agent", num_args = 1..)]
-    pub agent: Vec<String>,
     /// Output as JSON (machine-readable, no ANSI codes)
     #[arg(long = "json")]
     pub json: bool,

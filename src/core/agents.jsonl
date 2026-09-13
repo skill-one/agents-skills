@@ -21,9 +21,9 @@
 {"name":"cursor","display":"Cursor","skills_dir":".agents/skills","global":{"home":".cursor/skills"},"detect":[{"home":".cursor"}]}
 {"name":"deepagents","display":"Deep Agents","skills_dir":".agents/skills","global":{"home":".deepagents/agent/skills"},"detect":[{"home":".deepagents"}]}
 {"name":"devin","display":"Devin for Terminal","skills_dir":".devin/skills","global":{"config":"devin/skills"},"detect":[{"config":"devin"}]}
-{"name":"dexto","display":"Dexto","skills_dir":".agents/skills","global":{"home":".agents/skills"},"detect":[{"home":".dexto"}],"hidden":true}
+{"name":"dexto","display":"Dexto","skills_dir":".agents/skills","global":{"home":".agents/skills"},"detect":[{"home":".dexto"}]}
 {"name":"droid","display":"Droid","skills_dir":".factory/skills","global":{"home":".factory/skills"},"detect":[{"home":".factory"}]}
-{"name":"firebender","display":"Firebender","skills_dir":".agents/skills","global":{"home":".firebender/skills"},"detect":[{"home":".firebender"}],"hidden":true}
+{"name":"firebender","display":"Firebender","skills_dir":".agents/skills","global":{"home":".firebender/skills"},"detect":[{"home":".firebender"}]}
 {"name":"forgecode","display":"ForgeCode","skills_dir":".forge/skills","global":{"home":".forge/skills"},"detect":[{"home":".forge"}]}
 {"name":"gemini-cli","display":"Gemini CLI","skills_dir":".agents/skills","global":{"home":".gemini/skills"},"detect":[{"home":".gemini"}]}
 {"name":"github-copilot","display":"GitHub Copilot","skills_dir":".agents/skills","global":{"home":".copilot/skills"},"detect":[{"home":".copilot"}]}
@@ -40,7 +40,7 @@
 {"name":"kiro-cli","display":"Kiro CLI","skills_dir":".kiro/skills","global":{"home":".kiro/skills"},"detect":[{"home":".kiro"}]}
 {"name":"kode","display":"Kode","skills_dir":".kode/skills","global":{"home":".kode/skills"},"detect":[{"home":".kode"}]}
 {"name":"lingma","display":"Lingma","skills_dir":".lingma/skills","global":{"home":".lingma/skills"},"detect":[{"home":".lingma"}]}
-{"name":"loaf","display":"Loaf","skills_dir":".agents/skills","global":{"home":".agents/skills"},"detect":[{"home":".loaf"}],"hidden":true}
+{"name":"loaf","display":"Loaf","skills_dir":".agents/skills","global":{"home":".agents/skills"},"detect":[{"home":".loaf"}]}
 {"name":"mcpjam","display":"MCPJam","skills_dir":".mcpjam/skills","global":{"home":".mcpjam/skills"},"detect":[{"home":".mcpjam"}]}
 {"name":"minimax-code","display":"MiniMax Code","skills_dir":".minimax/skills","global":{"home":".minimax/skills"},"detect":[{"home":".minimax"},{"system":"/Applications/MiniMax Code.app"}]}
 {"name":"mistral-vibe","display":"Mistral Vibe","skills_dir":".vibe/skills","global":{"env_home":{"var":"VIBE_HOME","default":".vibe","path":"skills"}},"detect":[{"env_home":{"var":"VIBE_HOME","default":".vibe"}}]}
@@ -54,7 +54,7 @@
 {"name":"qoder","display":"Qoder","skills_dir":".qoder/skills","global":{"home":".qoder/skills"},"detect":[{"home":".qoder"}]}
 {"name":"qoder-cn","display":"Qoder CN","skills_dir":".qoder/skills","global":{"home":".qoder-cn/skills"},"detect":[{"home":".qoder-cn"}]}
 {"name":"qwen-code","display":"Qwen Code","skills_dir":".qwen/skills","global":{"home":".qwen/skills"},"detect":[{"home":".qwen"}]}
-{"name":"replit","display":"Replit","skills_dir":".agents/skills","global":{"config":"agents/skills"},"detect":[{"cwd":".replit"}],"hidden":true}
+{"name":"replit","display":"Replit","skills_dir":".agents/skills","global":{"config":"agents/skills"},"detect":[{"cwd":".replit"}]}
 {"name":"reasonix","display":"Reasonix","skills_dir":".reasonix/skills","global":{"home":".reasonix/skills"},"detect":[{"home":".reasonix"}]}
 {"name":"roo","display":"Roo Code","skills_dir":".roo/skills","global":{"home":".roo/skills"},"detect":[{"home":".roo"}]}
 {"name":"rovodev","display":"Rovo Dev","skills_dir":".rovodev/skills","global":{"home":".rovodev/skills"},"detect":[{"home":".rovodev"}]}
@@ -75,10 +75,10 @@
 {"name":"adal","display":"AdaL","skills_dir":".adal/skills","global":{"home":".adal/skills"},"detect":[{"home":".adal"}]}
 {"name":"eve","display":"Eve","skills_dir":"agent/skills","global":{"env_var":{"var":"EVE_GLOBAL_SKILLS_DIR"}},"detect":[]}
 {"name":"posit-assistant","display":"Posit Assistant","skills_dir":".posit/assistant/skills","global":{"home":".posit/assistant/skills"},"detect":[{"home":".posit/assistant"}]}
-{"name":"promptscript","display":"PromptScript","skills_dir":".agents/skills","global":{"env_var":{"var":"PROMPTSCRIPT_GLOBAL_SKILLS_DIR"}},"detect":[],"hidden":true}
+{"name":"promptscript","display":"PromptScript","skills_dir":".agents/skills","global":{"env_var":{"var":"PROMPTSCRIPT_GLOBAL_SKILLS_DIR"}},"detect":[]}
 {"name":"comate","display":"Comate","skills_dir":".comate/skills","global":{"home":".comate/skills"},"detect":[{"home":".comate"},{"cwd":".comate"}]}
 {"name":"qwenwork","display":"QwenWork","skills_dir":".qwenwork/skills","global":{"home":".qwenwork/skills"},"detect":[{"home":".qwenwork"}]}
 {"name":"qwenworkcn","display":"QwenWork CN","skills_dir":".qwenwork/skills","global":{"home":".qwenworkcn/skills"},"detect":[{"home":".qwenworkcn"}]}
 {"name":"joycode","display":"JoyCode","skills_dir":".joycode/skills","global":{"home":".joycode/skills"},"detect":[{"home":".joycode"}]}
 {"name":"lmstudio","display":"LM Studio","skills_dir":".lmstudio/skills","global":{"home":".lmstudio/skills"},"detect":[{"home":".lmstudio"}]}
-{"name":"universal","display":"Universal","skills_dir":".agents/skills","global":{"config":"agents/skills"},"detect":[],"hidden":true}
+{"name":"universal","display":"Universal","skills_dir":".agents/skills","global":{"config":"agents/skills"},"detect":[]}
