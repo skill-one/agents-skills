@@ -6,7 +6,11 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
+use icu_collator::options::{CollatorOptions, Strength};
+use icu_collator::{Collator, CollatorBorrowed, CollatorPreferences};
+use icu_locale_core::locale;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -205,19 +209,43 @@ fn portable_local_source(source: &str, lock_dir: &Path) -> String {
     format!("./{portable}")
 }
 
-/// Compute SHA-256 of a skill directory: recursively collect files (skipping .git/node_modules),
-/// sort by relative path, then hash each path and content in order (paths participate so renames are detected).
+/// Compute SHA-256 of a skill directory, matching the upstream skills.sh hash:
+/// for each file, append `utf8(relative path) + 0x00 + file bytes + 0x00` to a
+/// single SHA-256 stream, with files sorted in case-insensitive path order
+/// (ICU base-strength collation, i.e. `Intl.Collator("en", { sensitivity: "base" })`).
+///
+/// The NUL delimiters make path/content boundaries unambiguous, and paths
+/// participate so renames are detected. `.git` and `node_modules` are skipped
+/// (upstream snapshots never contain them either).
 pub fn compute_folder_hash(skill_dir: &Path) -> Result<String> {
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
     collect_files(skill_dir, skill_dir, &mut files)?;
-    files.sort_by(|a, b| a.0.cmp(&b.0));
+    let collator = base_collator();
+    files.sort_by(|a, b| collator.compare(&a.0, &b.0));
 
     let mut hasher = Sha256::new();
     for (rel, content) in files {
         hasher.update(rel.as_bytes());
+        hasher.update([0x00]);
         hasher.update(&content);
+        hasher.update([0x00]);
     }
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// ICU collator with base strength (ignores case and accents), matching
+/// `Intl.Collator("en", { sensitivity: "base" })` used by the upstream hash.
+fn base_collator() -> &'static CollatorBorrowed<'static> {
+    static COLLATOR: OnceLock<CollatorBorrowed<'static>> = OnceLock::new();
+    COLLATOR.get_or_init(|| {
+        let mut options = CollatorOptions::default();
+        options.strength = Some(Strength::Primary);
+        // `en` carries no collation keywords, so the strict parse always succeeds.
+        let prefs = CollatorPreferences::from_locale_strict(&locale!("en"))
+            .ok()
+            .unwrap_or_default();
+        Collator::try_new(prefs, options).expect("en collator is compiled in")
+    })
 }
 
 fn collect_files(base: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) -> Result<()> {
@@ -377,6 +405,57 @@ mod tests {
         fs::rename(dir.join("sub").join("a.txt"), dir.join("sub").join("b.txt")).unwrap();
         let h4 = compute_folder_hash(&dir).unwrap();
         assert_ne!(h1, h4);
+    }
+
+    #[test]
+    fn folder_hash_matches_upstream_spec() {
+        // Known vector: sha256("SKILL.md" 0x00 "hello" 0x00).
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("SKILL.md"), "hello").unwrap();
+        let mut expected = Sha256::new();
+        expected.update(b"SKILL.md");
+        expected.update([0x00]);
+        expected.update(b"hello");
+        expected.update([0x00]);
+        assert_eq!(
+            compute_folder_hash(dir.path()).unwrap(),
+            format!("{:x}", expected.finalize())
+        );
+    }
+
+    #[test]
+    fn folder_hash_nul_delimiters_disambiguate_path_content() {
+        // {"a" -> "b.txt"} vs {"a.b" -> "txt"} concatenate identically without
+        // delimiters; NUL separators must keep them distinct.
+        let mk = |name: &str, content: &str| {
+            let dir = tempfile::tempdir().unwrap();
+            fs::write(dir.path().join(name), content).unwrap();
+            let h = compute_folder_hash(dir.path()).unwrap();
+            std::mem::forget(dir); // keep dirs alive until both hashes are taken
+            h
+        };
+        assert_ne!(mk("a", "b.txt"), mk("a.b", "txt"));
+    }
+
+    #[test]
+    fn folder_hash_sorts_case_insensitively() {
+        // Base collation sorts "a.txt" before "B.txt"; plain byte order would
+        // put "B.txt" first. Verify the stream follows collation order.
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("B.txt"), "1").unwrap();
+        fs::write(dir.path().join("a.txt"), "2").unwrap();
+
+        let mut expected = Sha256::new();
+        for (rel, content) in [("a.txt", "2"), ("B.txt", "1")] {
+            expected.update(rel.as_bytes());
+            expected.update([0x00]);
+            expected.update(content.as_bytes());
+            expected.update([0x00]);
+        }
+        assert_eq!(
+            compute_folder_hash(dir.path()).unwrap(),
+            format!("{:x}", expected.finalize())
+        );
     }
 
     #[test]
