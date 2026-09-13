@@ -11,6 +11,15 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 ### Removed
 
+- **(breaking)** The lockfile mechanism entirely (`skills-lock.json` /
+  `~/.agents/.skill-lock.json`). After the `update` removal nothing consumed
+  the recorded metadata, so all skill tracking is directory-scan based now:
+  `list` and `remove` rely purely on the canonical dir contents. Existing
+  lockfiles are simply ignored and can be deleted. `list` no longer reports a
+  skill's origin (`source`/`sourceUrl`/`sourceType` fields removed). The now
+  unused `sha2`, `icu_collator`, `icu_locale_core` and `walkdir` dependencies
+  are dropped.
+
 - **(breaking)** The `update` command and `Manager::update` API. The
   implementation was unsound: it ignored the recorded `ref` (so pinned
   branches/tags silently updated from the default branch), never refreshed the
@@ -27,13 +36,6 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
   entries, so interrupted staging leftovers can never be listed as skills.
   A stray file at the skill's canonical path is now repaired (replaced) instead
   of failing the install.
-- (lock) `computedHash` now matches the upstream skills.sh hash: SHA-256 over
-  `utf8(relative path) + 0x00 + file bytes + 0x00` per file, files sorted in
-  case-insensitive path order (ICU base-strength collation, i.e.
-  `Intl.Collator("en", { sensitivity: "base" })`). Previously files were
-  concatenated without delimiters and sorted in byte order. Existing lock
-  entries keep their old hash value until the skill is reinstalled; the hash
-  is informational and not used for decisions, so no migration is required.
 
 ## [0.12.3] — 2026-09-12
 

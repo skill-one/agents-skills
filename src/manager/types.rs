@@ -218,10 +218,10 @@ pub struct AgentOutcome {
     pub results: Vec<AgentLinkResult>,
 }
 
-/// A listed skill enriched with lock metadata (serialized by `list --json`).
+/// A listed skill (serialized by `list --json`).
 ///
-/// Fields are serialized in camelCase, so `source_url` becomes `"sourceUrl"` — the
-/// exact JSON shape emitted by the CLI's `list --json`.
+/// Fields are serialized in camelCase — the exact JSON shape emitted by the
+/// CLI's `list --json`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListedSkill {
@@ -233,12 +233,6 @@ pub struct ListedSkill {
     pub scope: String,
     /// Agent display names this skill is linked to.
     pub agents: Vec<String>,
-    /// Source identifier from the lock.
-    pub source: Option<String>,
-    /// Resolved source URL.
-    pub source_url: Option<String>,
-    /// Source type (e.g. `"github"`, `"local"`).
-    pub source_type: Option<String>,
     /// Whether the skill is enabled (`true`) or parked in `disabled-skills` (`false`).
     pub enabled: bool,
 }

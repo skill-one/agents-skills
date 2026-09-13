@@ -11,6 +11,13 @@
 
 ### 移除
 
+- **(breaking)** 彻底移除 lockfile 机制（`skills-lock.json` /
+  `~/.agents/.skill-lock.json`）。`update` 移除后已无任何消费方，所有技能追踪
+  现在完全基于目录扫描：`list` 和 `remove` 只看规范目录内容。已有 lockfile
+  会被忽略，可自行删除。`list` 不再报告技能来源
+  （`source`/`sourceUrl`/`sourceType` 字段已删）。同时移除不再使用的
+  `sha2`、`icu_collator`、`icu_locale_core`、`walkdir` 依赖。
+
 - **(breaking)** 移除 `update` 命令与 `Manager::update` API。原实现并不合理：
   忽略 lock 中记录的 `ref`（锁定分支/tag 时静默改用默认分支更新）、重装后从不
   回写 lockfile、无条件覆盖本地改动。需要最新版本请用 `add` 重新安装。
@@ -22,12 +29,6 @@
   完整的新版;安装失败(磁盘满、权限等)时旧版本原样保留,不再出现删了一半的
   目录。目录扫描会跳过点开头的条目,中断残留的暂存目录不会被列成 skill。
   canonical 路径上若有同名文件占位,现在会被修复(替换)而不是安装失败。
-- (lock) `computedHash` 现在与上游 skills.sh 的 hash 保持一致:对每个文件按
-  `utf8(相对路径) + 0x00 + 文件字节 + 0x00` 追加进同一个 SHA-256 流,文件按
-  大小写不敏感的路径顺序排序(ICU base 强度 collation,即
-  `Intl.Collator("en", { sensitivity: "base" })`)。此前文件直接拼接无分隔符、
-  按字节序排序。已有 lock 条目保留旧 hash 值,直到该 skill 被重新安装;hash
-  仅作信息记录、不参与决策,因此无需迁移。
 
 ## [0.12.3] — 2026-09-12
 

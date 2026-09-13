@@ -29,7 +29,7 @@
 //! The crate root exposes only the high-level [`Manager`] facade, its request/outcome
 //! types, the few data types the outcomes carry ([`Env`], [`Source`], [`Skill`]), and
 //! the unified [`error`] types. All domain logic (source parsing, agent directories,
-//! SKILL.md discovery, install, agent links, lock) lives in the private `core` module —
+//! SKILL.md discovery, install, agent links) lives in the private `core` module —
 //! an implementation detail that may change without a breaking release.
 
 #![warn(missing_docs)]

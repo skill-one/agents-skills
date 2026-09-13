@@ -42,12 +42,12 @@ fn lib_add_list_remove_roundtrip() {
     assert!(outcome.failed.is_empty());
     assert!(cwd.join(".agents/skills/pdf/SKILL.md").exists());
 
-    // List finds it, with scope and lock metadata.
+    // List finds it, with scope info.
     let listed = manager.list(&ListRequest::default()).unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].name, "pdf");
     assert_eq!(listed[0].scope, "project");
-    assert!(listed[0].source.is_some());
+    assert!(listed[0].enabled);
 
     // Remove it.
     let removed = manager
@@ -135,7 +135,7 @@ fn lib_list_json_shape() {
     let json = serde_json::to_string_pretty(&listed).unwrap();
     assert!(json.contains("\"name\": \"pdf\""));
     assert!(json.contains("\"scope\": \"project\""));
-    assert!(json.contains("\"source\":"));
+    assert!(json.contains("\"enabled\": true"));
 }
 
 #[test]

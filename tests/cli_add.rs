@@ -18,8 +18,7 @@ fn add_local_path_installs_to_canonical() {
         .stdout(predicate::str::contains("Installed 1 skill"));
 
     p.assert_exists(".agents/skills/pdf/SKILL.md");
-    p.assert_exists("skills-lock.json");
-    assert!(p.read("skills-lock.json").contains("\"pdf\""));
+    p.assert_absent("skills-lock.json");
 }
 
 #[test]

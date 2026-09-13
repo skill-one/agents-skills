@@ -19,13 +19,11 @@ use crate::core::install::{
 use crate::core::link::{
     is_agent_linked, link_agent, pending_backup, private_content, unlink_agent,
 };
-use crate::core::lock::{find_lock_entry, read_local_lock, write_local_lock};
 use crate::core::source::{SourceType, parse_source};
 use crate::error::{Result, SkillsError};
 
 use crate::manager::select::{
-    lock_path, resolve_target_agents, resolve_to_remove, set_enabled_state, skill_filters,
-    write_lock,
+    resolve_target_agents, resolve_to_remove, set_enabled_state, skill_filters,
 };
 pub use crate::manager::types::{
     AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus, BackupStatus,
@@ -103,9 +101,9 @@ impl Manager {
     /// Add (install) skills from a source.
     ///
     /// Parses the source, discovers its skills, and installs each selected skill
-    /// into the canonical dir (the only place real files live), recording
-    /// successful installs in the lockfile. Returns a structured [`AddOutcome`]
-    /// with discovered, selected, installed and failed skills.
+    /// into the canonical dir (the only place real files live). Returns a
+    /// structured [`AddOutcome`] with discovered, selected, installed and failed
+    /// skills.
     ///
     /// `add` never links any agent: use [`Manager::agent`] to expose the canonical
     /// dir to an agent afterwards.
@@ -238,11 +236,6 @@ impl Manager {
             }
         }
 
-        // Write the lock (only for successfully installed skills).
-        if !installed.is_empty() {
-            write_lock(&parsed, &selected, &installed, req.global, &self.env)?;
-        }
-
         Ok(AddOutcome {
             source: parsed,
             skills,
@@ -364,11 +357,11 @@ impl Manager {
         statuses
     }
 
-    /// List installed skills (project or global), enriched with lock metadata.
+    /// List installed skills (project or global).
     ///
-    /// Scans the canonical skills directory and joins each entry with its lockfile
-    /// record, producing serde-serializable [`ListedSkill`] values — the same shape
-    /// emitted by `list --json`.
+    /// Scans the canonical skills directory (plus the disabled dir), producing
+    /// serde-serializable [`ListedSkill`] values — the same shape emitted by
+    /// `list --json`.
     ///
     /// # Examples
     ///
@@ -397,34 +390,25 @@ impl Manager {
             return Err(SkillsError::InvalidAgents(invalid.join(", ")));
         }
 
-        let lock = read_local_lock(&lock_path(&self.env, req.global));
         let installed = list_installed_skills(&self.env, req.global, &req.agents);
         let disabled = list_disabled_skills(&self.env, req.global);
 
         let mut out = Vec::new();
         for s in &installed {
-            let entry = find_lock_entry(&lock, &s.name);
             out.push(ListedSkill {
                 name: s.name.clone(),
                 path: s.canonical_path.clone(),
                 scope: s.scope.clone(),
                 agents: s.agents.iter().map(|a| agent_display(a)).collect(),
-                source: entry.map(|e| e.source.clone()),
-                source_url: entry.and_then(|e| e.source_url.clone()),
-                source_type: entry.map(|e| e.source_type.clone()),
                 enabled: true,
             });
         }
         for s in &disabled {
-            let entry = find_lock_entry(&lock, &s.name);
             out.push(ListedSkill {
                 name: s.name.clone(),
                 path: s.canonical_path.clone(),
                 scope: s.scope.clone(),
                 agents: Vec::new(),
-                source: entry.map(|e| e.source.clone()),
-                source_url: entry.and_then(|e| e.source_url.clone()),
-                source_type: entry.map(|e| e.source_type.clone()),
                 enabled: false,
             });
         }
@@ -436,8 +420,7 @@ impl Manager {
     ///
     /// Moves each selected skill's directory from the canonical dir into the sibling
     /// `disabled-skills` dir, hiding it from every linked or universal agent at once.
-    /// Files are preserved, so [`Manager::enable`] restores them losslessly; the
-    /// lockfile entry is kept, so `list` still shows the skill's source metadata.
+    /// Files are preserved, so [`Manager::enable`] restores them losslessly.
     ///
     /// # Selection semantics
     ///
@@ -593,16 +576,16 @@ impl Manager {
 
     /// Remove installed skills.
     ///
-    /// Deletes each skill's directory from the canonical dir and drops its lockfile
-    /// entry. Removal applies to every linked agent at once (they all share the
-    /// canonical dir); agent links themselves are untouched — call [`Manager::agent`]
-    /// with `unlink: true` to disconnect an agent instead.
+    /// Deletes each skill's directory from the canonical dir. Removal applies to
+    /// every linked agent at once (they all share the canonical dir); agent links
+    /// themselves are untouched — call [`Manager::agent`] with `unlink: true` to
+    /// disconnect an agent instead.
     ///
     /// # Selection semantics
     ///
     /// - `skills` empty and `all` false → nothing is removed; the outcome reports the
     ///   currently enabled names (used by the CLI to print a hint).
-    /// - `all` true → every installed skill (enabled or disabled) plus every lockfile key.
+    /// - `all` true → every installed skill (enabled or disabled).
     ///
     /// # Examples
     ///
@@ -628,8 +611,7 @@ impl Manager {
         let global = req.global;
 
         // Disabled skills are still installed (parked in `disabled-skills`): scan them
-        // too so `remove <name>` and `remove --all` can find and delete them, even when
-        // they have no lockfile entry (e.g. symlinked by a third-party tool).
+        // too so `remove <name>` and `remove --all` can find and delete them.
         let installed = scan_installed(&self.env, global);
         let disabled = scan_disabled(&self.env, global);
 
@@ -642,14 +624,11 @@ impl Manager {
             });
         }
 
-        // Resolve the skill names to remove (lock keys take priority, then on-disk dir names).
-        let lock = read_local_lock(&lock_path(&self.env, global));
-        let lock_keys: Vec<String> = lock.skills.keys().cloned().collect();
+        // Resolve the skill names to remove against the on-disk dir names.
         let requested: Vec<String> = if req.all {
             installed
                 .iter()
                 .chain(disabled.iter())
-                .chain(lock_keys.iter())
                 .cloned()
                 .collect()
         } else {
@@ -663,7 +642,7 @@ impl Manager {
             });
         }
 
-        let selected = resolve_to_remove(&requested, &installed, &disabled, &lock_keys);
+        let selected = resolve_to_remove(&requested, &installed, &disabled);
         if selected.is_empty() {
             return Ok(RemoveOutcome {
                 installed,
@@ -673,8 +652,6 @@ impl Manager {
         }
 
         // Remove from the canonical dir (visible to every linked agent at once).
-        let lock_path = lock_path(&self.env, global);
-        let mut lock = read_local_lock(&lock_path);
         let mut removed: Vec<String> = Vec::new();
         for name in &selected {
             let canonical = get_canonical_path(name, global, &self.env);
@@ -684,20 +661,7 @@ impl Manager {
             let parked = disabled_skills_dir(global, &self.env).join(&sanitized);
             let _ = std::fs::remove_dir_all(&parked);
 
-            // Clean the lock.
-            lock.version = 1;
-            lock.skills.remove(name);
-            lock.skills.remove(&sanitized);
-
             removed.push(name.clone());
-        }
-
-        // Flush the lock once for all removals.
-        if !removed.is_empty() {
-            if let Some(parent) = lock_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = write_local_lock(&lock, &lock_path);
         }
 
         Ok(RemoveOutcome {
@@ -725,7 +689,7 @@ pub struct ManagerBuilder {
 impl ManagerBuilder {
     /// Override the home directory.
     ///
-    /// Affects global skills (`~/.agents/skills`), the global lockfile, and per-agent
+    /// Affects global skills (`~/.agents/skills`) and per-agent
     /// user-level skills directories.
     pub fn home(mut self, p: impl Into<PathBuf>) -> Self {
         self.home = Some(p.into());
@@ -742,7 +706,7 @@ impl ManagerBuilder {
 
     /// Override the current working directory.
     ///
-    /// Affects project-scope installs (`.agents/skills`), the project lockfile, and
+    /// Affects project-scope installs (`.agents/skills`) and
     /// scope auto-detection.
     pub fn cwd(mut self, p: impl Into<PathBuf>) -> Self {
         self.cwd = Some(p.into());

@@ -45,7 +45,6 @@ src/
 │   │   ├── outcome.rs  LinkOutcome 结果枚举
 │   │   ├── path.rs     路径分类辅助函数
 │   │   └── tests.rs    链接机制的单元测试
-│   ├── lock.rs         skills-lock.json 读写 + 内容哈希
 │   └── test_utils.rs   单元测试共享夹具
 ├── main.rs             bin 入口（库之上的薄 CLI）
 ├── cli.rs              clap 命令树（命令、flags，不设别名）

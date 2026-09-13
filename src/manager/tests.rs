@@ -17,29 +17,15 @@ fn skill_filters_merges_args_and_at_filter() {
 }
 
 #[test]
-fn resolve_to_remove_prefers_lock_keys() {
-    let installed = vec!["PDF".to_string()];
-    let lock_keys = vec!["pdf".to_string()];
-    let requested = vec!["pdf".to_string(), "unknown".to_string()];
-
-    // Lock keys take priority: "pdf" (not the on-disk "PDF" casing).
-    assert_eq!(
-        resolve_to_remove(&requested, &installed, &[], &lock_keys),
-        vec!["pdf"]
-    );
-}
-
-#[test]
-fn resolve_to_remove_matches_disabled_without_lock() {
-    let installed = Vec::new();
+fn resolve_to_remove_matches_on_disk_names() {
+    let installed = vec!["pdf".to_string()];
     let disabled = vec!["legacy".to_string()];
-    let lock_keys = Vec::new();
-    let requested = vec!["legacy".to_string()];
+    let requested = vec!["pdf".to_string(), "legacy".to_string(), "unknown".to_string()];
 
-    // A disabled skill with no lockfile entry is still resolvable for removal.
+    // Only on-disk dir names resolve; "unknown" matches nothing.
     assert_eq!(
-        resolve_to_remove(&requested, &installed, &disabled, &lock_keys),
-        vec!["legacy"]
+        resolve_to_remove(&requested, &installed, &disabled),
+        vec!["legacy", "pdf"]
     );
 }
 

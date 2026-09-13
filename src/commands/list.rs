@@ -46,7 +46,6 @@ pub fn run(manager: &Manager, args: ListArgs) -> Result<()> {
 
 fn print_skill(skill: &ListedSkill, env: &Env) {
     let short = shorten_path(&skill.path, env);
-    let source_label = skill.source.clone().unwrap_or_else(|| "local".to_string());
     let status = if skill.enabled {
         format!("{GREEN}enabled{RESET}")
     } else {
@@ -56,5 +55,4 @@ fn print_skill(skill: &ListedSkill, env: &Env) {
         "{CYAN}{}{RESET} {DIM}{}{RESET} [{status}]",
         skill.name, short
     );
-    println!("  {DIM}Source:{RESET} {source_label}");
 }

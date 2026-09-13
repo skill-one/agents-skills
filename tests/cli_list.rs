@@ -42,7 +42,7 @@ fn list_empty_project_prints_hint() {
 }
 
 #[test]
-fn list_json_reports_name_scope_and_source() {
+fn list_json_reports_name_scope_and_enabled() {
     let p = TestProject::new();
     let src = p.write_skill_source("my-skill", "pdf");
 
@@ -57,11 +57,11 @@ fn list_json_reports_name_scope_and_source() {
         .success()
         .stdout(predicate::str::contains("\"name\": \"pdf\""))
         .stdout(predicate::str::contains("\"scope\": \"project\""))
-        .stdout(predicate::str::contains("\"source\":"));
+        .stdout(predicate::str::contains("\"enabled\": true"));
 }
 
 #[test]
-fn list_plain_prints_skill_and_source() {
+fn list_plain_prints_skill() {
     let p = TestProject::new();
     let src = p.write_skill_source("my-skill", "pdf");
 
@@ -76,7 +76,7 @@ fn list_plain_prints_skill_and_source() {
         .success()
         .stdout(predicate::str::contains("Project Skills"))
         .stdout(predicate::str::contains("pdf"))
-        .stdout(predicate::str::contains("Source:"));
+        .stdout(predicate::str::contains("enabled"));
 }
 
 #[test]
@@ -111,14 +111,14 @@ fn list_plain_hides_agents() {
         .assert()
         .success();
 
-    // Plain output shows name/path/Source but no per-skill agent column;
+    // Plain output shows name/path/status but no per-skill agent column;
     // agent link status is `agent --status`'s job.
     p.skills()
         .args(["list", "--project", "."])
         .assert()
         .success()
         .stdout(predicate::str::contains("pdf"))
-        .stdout(predicate::str::contains("Source:"))
+        .stdout(predicate::str::contains("enabled"))
         .stdout(predicate::str::contains("Agents").not());
 }
 

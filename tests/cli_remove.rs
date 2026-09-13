@@ -7,7 +7,7 @@ use predicates::prelude::*;
 use common::TestProject;
 
 #[test]
-fn remove_deletes_installed_skill_and_lock_entry() {
+fn remove_deletes_installed_skill() {
     let p = TestProject::new();
     let src = p.write_skill_source("my-skill", "pdf");
 
@@ -24,10 +24,6 @@ fn remove_deletes_installed_skill_and_lock_entry() {
         .stdout(predicate::str::contains("Successfully removed 1 skill"));
 
     p.assert_absent(".agents/skills/pdf");
-    assert!(
-        !p.read("skills-lock.json").contains("\"pdf\""),
-        "lock should drop skill"
-    );
 }
 
 #[test]

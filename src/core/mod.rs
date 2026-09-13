@@ -1,4 +1,4 @@
-//! core: CLI-agnostic domain logic (source parsing, agent dirs, SKILL.md discovery, install, links, lock).
+//! core: CLI-agnostic domain logic (source parsing, agent dirs, SKILL.md discovery, install, links).
 //!
 //! Everything is pure functions or dependency-injectable, for easy unit testing and reuse.
 
@@ -8,7 +8,6 @@ pub mod fetch;
 pub mod github;
 pub mod install;
 pub mod link;
-pub mod lock;
 pub mod source;
 
 #[cfg(test)]

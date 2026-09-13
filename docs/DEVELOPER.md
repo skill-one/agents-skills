@@ -51,7 +51,6 @@ src/
 │   │   ├── outcome.rs  LinkOutcome result enum
 │   │   ├── path.rs     Path classification helpers
 │   │   └── tests.rs    Unit tests for the linking machinery
-│   ├── lock.rs         skills-lock.json read/write + content hashing
 │   └── test_utils.rs   Shared unit-test fixtures
 ├── main.rs             bin entry point (thin CLI on top of the library)
 ├── cli.rs              clap command tree (commands, flags — no aliases)
