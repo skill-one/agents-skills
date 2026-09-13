@@ -564,7 +564,10 @@ fn lib_disable_global_scope_moves_home_skill() {
 }
 
 #[test]
+#[cfg(unix)]
 fn lib_update_reports_install_failures_without_updated_names() {
+    use std::os::unix::fs::PermissionsExt;
+
     let tmp = tempfile::TempDir::new().unwrap();
 
     // A real git repo so the lock records a non-local (git) source: `update` re-fetches it.
@@ -596,13 +599,17 @@ fn lib_update_reports_install_failures_without_updated_names() {
         .add(&AddRequest::new(format!("file://{}", repo_dir.display())))
         .unwrap();
 
-    // Sabotage the canonical install: a file sits where the skill dir should be,
-    // so reinstalling fails inside install_skill (remove_dir_all on a file).
-    let canonical = cwd.join(".agents/skills/pdf");
-    std::fs::remove_dir_all(&canonical).unwrap();
-    std::fs::write(&canonical, "not a dir").unwrap();
+    // Sabotage the canonical base: a read-only skills dir makes the staged
+    // install fail at staging creation, before anything is touched.
+    let skills_dir = cwd.join(".agents/skills");
+    let perms = std::fs::metadata(&skills_dir).unwrap().permissions();
+    std::fs::set_permissions(&skills_dir, std::fs::Permissions::from_mode(perms.mode() & !0o222))
+        .unwrap();
 
     let outcome = manager.update(&UpdateRequest::default()).unwrap();
+
+    // Restore permissions so temp-dir cleanup can succeed.
+    std::fs::set_permissions(&skills_dir, perms).unwrap();
 
     assert_eq!(outcome.updated, 0);
     assert_eq!(outcome.failed, 1);

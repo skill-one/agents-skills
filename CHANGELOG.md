@@ -9,6 +9,24 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 ## [Unreleased]
 
+### Changed
+
+- (install) Skills are now installed atomically. The new content is copied into
+  a `.incoming-*` staging dir next to the destination and swapped in with
+  renames, so linked agents only ever see a complete skill version, and a
+  failed install (disk full, permissions, ...) leaves the previous version
+  untouched instead of a half-deleted directory. Directory scans skip dot-prefixed
+  entries, so interrupted staging leftovers can never be listed as skills.
+  A stray file at the skill's canonical path is now repaired (replaced) instead
+  of failing the install.
+- (lock) `computedHash` now matches the upstream skills.sh hash: SHA-256 over
+  `utf8(relative path) + 0x00 + file bytes + 0x00` per file, files sorted in
+  case-insensitive path order (ICU base-strength collation, i.e.
+  `Intl.Collator("en", { sensitivity: "base" })`). Previously files were
+  concatenated without delimiters and sorted in byte order. Existing lock
+  entries keep their old hash value until the skill is reinstalled; the hash
+  is informational and not used for decisions, so no migration is required.
+
 ## [0.12.3] — 2026-09-12
 
 ### Added

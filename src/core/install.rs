@@ -103,13 +103,6 @@ fn paths_overlap(a: &Path, b: &Path) -> bool {
     path_safe(a, b) || path_safe(b, a)
 }
 
-/// Clean and recreate a directory.
-fn clean_and_create(dir: &Path) -> Result<()> {
-    let _ = fs::remove_dir_all(dir);
-    fs::create_dir_all(dir)?;
-    Ok(())
-}
-
 /// Recursively copy a directory, excluding metadata.json / .git / __pycache__ / __pypackages__,
 /// dereferencing symlinks (copying target contents).
 pub fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
@@ -161,9 +154,35 @@ pub fn install_skill(skill: &Skill, global: bool, env: &Env) -> InstallResult {
         };
     }
 
-    if let Err(e) =
-        clean_and_create(&canonical_dir).and_then(|_| copy_directory(&skill.dir, &canonical_dir))
-    {
+    // Stage the new content next to the destination (same filesystem), then swap
+    // directories with renames: agents see either the complete old or the
+    // complete new skill, and a copy failure leaves the old version in place.
+    let suffix = unique_suffix();
+    let staging = canonical_base.join(format!(".incoming-{skill_name}-{suffix}"));
+    let backup = canonical_base.join(format!(".old-{skill_name}-{suffix}"));
+
+    let install = (|| -> Result<()> {
+        fs::create_dir_all(&staging)?;
+        copy_directory(&skill.dir, &staging)?;
+        let had_old = canonical_dir.symlink_metadata().is_ok();
+        if had_old {
+            fs::rename(&canonical_dir, &backup)?;
+        }
+        if let Err(e) = fs::rename(&staging, &canonical_dir) {
+            if had_old {
+                let _ = fs::rename(&backup, &canonical_dir); // roll back
+            }
+            return Err(e.into());
+        }
+        if had_old {
+            remove_path(&backup);
+        }
+        Ok(())
+    })();
+
+    if let Err(e) = install {
+        remove_path(&staging);
+        remove_path(&backup);
         return InstallResult {
             success: false,
             canonical_path: canonical_dir,
@@ -177,6 +196,25 @@ pub fn install_skill(skill: &Skill, global: bool, env: &Env) -> InstallResult {
         canonical_path: canonical_dir,
         skipped: false,
         error: None,
+    }
+}
+
+/// Unique suffix for staging/backup directory names (pid + nanos).
+fn unique_suffix() -> u128 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    nanos ^ (std::process::id() as u128)
+}
+
+/// Remove a file or directory (whatever is at the path), ignoring errors.
+fn remove_path(p: &Path) {
+    if p.symlink_metadata().map(|m| m.is_dir()).unwrap_or(false) {
+        let _ = fs::remove_dir_all(p);
+    } else {
+        let _ = fs::remove_file(p);
     }
 }
 
@@ -213,6 +251,10 @@ pub fn list_installed_skills(
     };
 
     for entry in entries.flatten() {
+        // Skip dot-dirs (staging leftovers like `.incoming-*` are never skills).
+        if entry.file_name().to_string_lossy().starts_with('.') {
+            continue;
+        }
         let skill_dir = entry.path();
         let skill_md = skill_dir.join("SKILL.md");
         if !skill_md.is_file() {
@@ -259,6 +301,10 @@ pub fn scan_installed(env: &Env, global: bool) -> Vec<String> {
     let mut v: Vec<String> = Vec::new();
     if let Ok(entries) = fs::read_dir(&canonical) {
         for entry in entries.flatten() {
+            // Skip dot-dirs (staging leftovers like `.incoming-*` are never skills).
+            if entry.file_name().to_string_lossy().starts_with('.') {
+                continue;
+            }
             if entry.path().is_dir() {
                 v.push(entry.file_name().to_string_lossy().into_owned());
             }
@@ -338,7 +384,7 @@ pub fn move_skill(name: &str, global: bool, to_enabled: bool, env: &Env) -> Resu
 mod tests {
     use super::*;
     use crate::core::link::{LinkOutcome, link_agent};
-    use crate::core::test_utils::{env_at, write_and_parse_skill};
+    use crate::core::test_utils::{env_at, skill_frontmatter, write_and_parse_skill};
 
     fn write_skill(dir: &Path, name: &str) -> Skill {
         write_and_parse_skill(dir, name)
@@ -424,6 +470,75 @@ mod tests {
         assert!(r.success);
         assert!(r.skipped);
         assert!(src.join("SKILL.md").exists());
+    }
+
+    #[test]
+    fn install_skill_replaces_old_version_without_leftovers() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        let canonical_base = tmp.path().join(".agents/skills");
+        let src = tmp.path().join("src-skill");
+        let skill = write_skill(&src, "pdf");
+
+        let r = install_skill(&skill, false, &env);
+        assert!(r.success, "err={:?}", r.error);
+        assert_eq!(
+            fs::read_to_string(canonical_base.join("pdf/SKILL.md")).unwrap(),
+            skill_frontmatter("pdf")
+        );
+
+        // Second install with changed content must fully replace v1.
+        let skill = write_skill(&src, "pdf");
+        fs::write(src.join("SKILL.md"), "v2").unwrap();
+        let r = install_skill(&skill, false, &env);
+        assert!(r.success, "err={:?}", r.error);
+        assert_eq!(fs::read_to_string(canonical_base.join("pdf/SKILL.md")).unwrap(), "v2");
+
+        // No staging or backup dirs may survive a successful install.
+        let leftovers: Vec<_> = fs::read_dir(&canonical_base)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with(".incoming-") || n.starts_with(".old-"))
+            .collect();
+        assert!(leftovers.is_empty(), "leftovers: {leftovers:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn install_skill_failure_preserves_old_version() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        let canonical_base = tmp.path().join(".agents/skills");
+        let src = tmp.path().join("src-skill");
+        let skill = write_skill(&src, "pdf");
+
+        // v1 installed successfully.
+        assert!(install_skill(&skill, false, &env).success);
+
+        // v2 breaks mid-copy: an unreadable file makes fs::copy fail.
+        fs::write(src.join("SKILL.md"), "v2").unwrap();
+        let bad = src.join("bad.txt");
+        fs::write(&bad, "x").unwrap();
+        fs::set_permissions(&bad, fs::Permissions::from_mode(0o000)).unwrap();
+
+        let r = install_skill(&write_skill(&src, "pdf"), false, &env);
+        assert!(!r.success, "copy should have failed");
+
+        // The old version must be fully intact and nothing staged left behind.
+        assert_eq!(
+            fs::read_to_string(canonical_base.join("pdf/SKILL.md")).unwrap(),
+            skill_frontmatter("pdf")
+        );
+        let leftovers: Vec<_> = fs::read_dir(&canonical_base)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with(".incoming-") || n.starts_with(".old-"))
+            .collect();
+        assert!(leftovers.is_empty(), "leftovers: {leftovers:?}");
     }
 
     #[test]
