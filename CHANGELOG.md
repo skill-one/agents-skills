@@ -9,6 +9,8 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-09-13
+
 ### Removed
 
 - **(breaking)** The lockfile mechanism entirely (`skills-lock.json` /

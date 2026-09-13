@@ -9,6 +9,8 @@
 
 ## [Unreleased](未发布)
 
+## [0.13.0] — 2026-09-13
+
 ### 移除
 
 - **(breaking)** 彻底移除 lockfile 机制（`skills-lock.json` /
