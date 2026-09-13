@@ -57,7 +57,6 @@ overrides.
 | [`Manager::agent_status`] | `bool` (global)    | `Vec<`[`AgentStatus`]`>`                      |
 | [`Manager::list`]         | [`ListRequest`]    | `Vec<`[`ListedSkill`]`>` (serializable)       |
 | [`Manager::remove`]       | [`RemoveRequest`]  | [`RemoveOutcome`] (removed names)             |
-| [`Manager::update`]       | [`UpdateRequest`]  | [`UpdateOutcome`] (updated/failed counts)     |
 | [`Manager::disable`]      | [`DisableRequest`] | [`DisableOutcome`] (disabled names)           |
 | [`Manager::enable`]       | [`EnableRequest`]  | [`EnableOutcome`] (enabled names)             |
 
@@ -69,7 +68,6 @@ overrides.
 | [`AgentRequest`]   | `agents: Vec<String>`, `unlink: bool`, `migrate: bool`                                                      |
 | [`ListRequest`]    | `agents: Vec<String>` (empty = all agents)                                                                  |
 | [`RemoveRequest`]  | `skills: Vec<String>`, `all: bool`                                                                          |
-| [`UpdateRequest`]  | `skills: Vec<String>`, `scope: Scope`                                                                       |
 | [`DisableRequest`] | `skills: Vec<String>`, `all: bool`                                                                          |
 | [`EnableRequest`]  | `skills: Vec<String>`, `all: bool`                                                                          |
 
@@ -80,10 +78,6 @@ global `~/.agents/skills` (the CLI default), `false` on the project-level
 CLI's `--project <dir>`). The `agents` field of `AgentRequest` and
 `ListRequest` restricts the agents (`"*"` or specific names, empty =
 auto-detect).
-
-The `scope` of [`UpdateRequest`] overrides automatic scope detection:
-[`Scope::Auto`] (default — project scope if the project has skills/a lockfile,
-otherwise global), [`Scope::Global`], [`Scope::Project`].
 
 ### Correspondence with the CLI
 
@@ -126,9 +120,6 @@ let json = serde_json::to_string_pretty(&skills)?; // the CLI's list --json
 // Remove skills
 manager.remove(&RemoveRequest { skills: vec!["pdf".into()], ..Default::default() })?;
 
-// Update skills
-let outcome = manager.update(&UpdateRequest::default())?;
-
 // Disable / enable (moves the skill directory out of / back into the canonical directory)
 manager.disable(&DisableRequest { skills: vec!["pdf".into()], ..Default::default() })?;
 manager.enable(&EnableRequest { skills: vec!["pdf".into()], ..Default::default() })?;
@@ -170,7 +161,6 @@ telemetry** — no data ever leaves your machine.
 [`Manager::agent_status`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.agent_status
 [`Manager::list`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.list
 [`Manager::remove`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.remove
-[`Manager::update`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.update
 [`Manager::disable`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.disable
 [`Manager::enable`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.enable
 [`ManagerBuilder`]: https://docs.rs/agents-skills/latest/agents_skills/struct.ManagerBuilder.html
@@ -184,12 +174,7 @@ telemetry** — no data ever leaves your machine.
 [`ListedSkill`]: https://docs.rs/agents-skills/latest/agents_skills/struct.ListedSkill.html
 [`RemoveRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.RemoveRequest.html
 [`RemoveOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.RemoveOutcome.html
-[`UpdateRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.UpdateRequest.html
-[`UpdateOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.UpdateOutcome.html
 [`DisableRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.DisableRequest.html
 [`DisableOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.DisableOutcome.html
 [`EnableRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.EnableRequest.html
 [`EnableOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.EnableOutcome.html
-[`Scope::Auto`]: https://docs.rs/agents-skills/latest/agents_skills/enum.Scope.html
-[`Scope::Global`]: https://docs.rs/agents-skills/latest/agents_skills/enum.Scope.html
-[`Scope::Project`]: https://docs.rs/agents-skills/latest/agents_skills/enum.Scope.html

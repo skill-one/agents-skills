@@ -9,6 +9,12 @@
 
 ## [Unreleased](未发布)
 
+### 移除
+
+- **(breaking)** 移除 `update` 命令与 `Manager::update` API。原实现并不合理：
+  忽略 lock 中记录的 `ref`（锁定分支/tag 时静默改用默认分支更新）、重装后从不
+  回写 lockfile、无条件覆盖本地改动。需要最新版本请用 `add` 重新安装。
+
 ### 变更
 
 - (install) Skill 安装改为原子操作。新内容先复制到目标旁边的 `.incoming-*` 暂存

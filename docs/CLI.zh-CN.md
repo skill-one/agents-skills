@@ -19,7 +19,6 @@ cargo install agents-skills
 | `add`     | 从来源安装技能包            |
 | `remove`  | 移除已安装技能             |
 | `list`    | 列出已安装技能             |
-| `update`  | 将技能更新到最新版本          |
 | `disable` | 禁用已安装技能             |
 | `enable`  | 重新启用已禁用的技能          |
 | `agent`   | 链接/解除链接/查看 agent 状态 |
@@ -90,24 +89,6 @@ agents-skills list [options]
 agents-skills list
 agents-skills list --json
 agents-skills list --project . --agent claude-code
-```
-
-## update
-
-根据 lockfile 记录将技能更新到最新版本。已禁用的技能会被跳过。
-
-```
-agents-skills update [skills...] [options]
-```
-
-| 选项                    | 说明                 |
-| --------------------- | ------------------ |
-| `-p, --project <dir>` | 仅更新指定项目目录的技能（默认全局） |
-
-```bash
-agents-skills update               # 更新全局技能（默认作用域）
-agents-skills update --project .   # 仅更新当前项目技能
-agents-skills update pdf           # 仅更新指定技能
 ```
 
 ## disable / enable

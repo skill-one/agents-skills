@@ -9,6 +9,14 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 ## [Unreleased]
 
+### Removed
+
+- **(breaking)** The `update` command and `Manager::update` API. The
+  implementation was unsound: it ignored the recorded `ref` (so pinned
+  branches/tags silently updated from the default branch), never refreshed the
+  lockfile after reinstalling, and unconditionally overwrote local changes.
+  Reinstall with `add` to get the latest version.
+
 ### Changed
 
 - (install) Skills are now installed atomically. The new content is copied into

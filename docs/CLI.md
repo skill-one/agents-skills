@@ -20,7 +20,6 @@ Global option: `-v, --version` prints the version.
 | `add`     | Install a skill pack from a source  |
 | `remove`  | Remove installed skills             |
 | `list`    | List installed skills               |
-| `update`  | Update skills to the latest version |
 | `disable` | Disable an installed skill          |
 | `enable`  | Re-enable a disabled skill          |
 | `agent`   | Link / unlink / show agent status   |
@@ -96,25 +95,6 @@ agents-skills list [options]
 agents-skills list
 agents-skills list --json
 agents-skills list --project . --agent claude-code
-```
-
-## update
-
-Update skills to the latest version based on the lockfile records. Disabled
-skills are skipped.
-
-```
-agents-skills update [skills...] [options]
-```
-
-| Option                | Description                                                         |
-| --------------------- | ------------------------------------------------------------------- |
-| `-p, --project <dir>` | Only update skills in the given project directory (default: global) |
-
-```bash
-agents-skills update               # update global skills (default scope)
-agents-skills update --project .   # only update the current project's skills
-agents-skills update pdf           # only update the specified skill
 ```
 
 ## disable / enable

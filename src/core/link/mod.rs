@@ -3,7 +3,7 @@
 //! The canonical dir holds the only real copies of installed skills; agents that do
 //! not natively read it are integrated with a directory-level symlink
 //! ([`link_agent`]): each agent's own skills dir becomes a relative link pointing
-//! at the canonical dir, so every install/update/remove is instantly visible to all
+//! at the canonical dir, so every install/remove is instantly visible to all
 //! linked agents.
 //!
 //! Pre-existing content is never destroyed. A non-empty skills dir is parked

@@ -24,7 +24,7 @@
 ```
 src/
 ├── lib.rs              库根：Manager 门面 + 请求/结果类型 + 私有 core 模块
-├── manager/            高层 Manager 门面（add/list/remove/update/disable/enable/link）
+├── manager/            高层 Manager 门面（add/list/remove/disable/enable/link）
 │   ├── mod.rs          Manager 方法（每个 CLI 命令对应一个）
 │   ├── types.rs        与 CLI 层共享的请求/结果结构体
 │   ├── select.rs       选择辅助函数（技能匹配 + agent 解析）
@@ -54,7 +54,6 @@ src/
     ├── add.rs
     ├── remove.rs
     ├── list.rs
-    ├── update.rs
     ├── disable.rs
     ├── enable.rs
     └── agent.rs

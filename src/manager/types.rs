@@ -97,30 +97,6 @@ pub struct AgentRequest {
     pub migrate: bool,
 }
 
-/// Installation scope for [`Manager::update`].
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum Scope {
-    /// Auto-detect: project scope if the project has skills or a lockfile, otherwise
-    /// global.
-    #[default]
-    Auto,
-    /// Force global scope.
-    Global,
-    /// Force project scope.
-    Project,
-}
-
-/// Request for [`Manager::update`].
-///
-/// `Default` updates all skills with auto-detected scope.
-#[derive(Debug, Clone, Default)]
-pub struct UpdateRequest {
-    /// Filter by skill names; empty = all.
-    pub skills: Vec<String>,
-    /// Installation scope ([`Scope::Auto`] by default).
-    pub scope: Scope,
-}
-
 /// Request for [`Manager::disable`].
 ///
 /// `Default` is a no-op that only reports enabled names — set `skills` or `all` to
@@ -276,21 +252,6 @@ pub struct RemoveOutcome {
     pub requested: Vec<String>,
     /// Names actually removed.
     pub removed: Vec<String>,
-}
-
-/// Result of [`Manager::update`].
-#[derive(Debug, Default)]
-pub struct UpdateOutcome {
-    /// Whether the update used global scope.
-    pub global: bool,
-    /// Number of successful updates (one count per skill).
-    pub updated: usize,
-    /// Number of failed updates.
-    pub failed: usize,
-    /// Names of skills that were updated.
-    pub updated_names: Vec<String>,
-    /// Human-readable failure messages.
-    pub failures: Vec<String>,
 }
 
 /// Result of [`Manager::disable`].

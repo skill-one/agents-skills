@@ -1,9 +1,8 @@
-//! High-level `Manager` facade: one-stop add/list/remove/update over an injectable [`Env`].
+//! High-level `Manager` facade: one-stop add/list/remove over an injectable [`Env`].
 //!
 //! The manager is pure data: it returns structured outcomes and never prints or exits;
 //! the CLI layer (src/commands) is responsible for rendering.
 
-use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 
 use crate::core::agents::{
@@ -20,25 +19,25 @@ use crate::core::install::{
 use crate::core::link::{
     is_agent_linked, link_agent, pending_backup, private_content, unlink_agent,
 };
-use crate::core::lock::{LockEntry, find_lock_entry, read_local_lock, write_local_lock};
+use crate::core::lock::{find_lock_entry, read_local_lock, write_local_lock};
 use crate::core::source::{SourceType, parse_source};
 use crate::error::{Result, SkillsError};
 
 use crate::manager::select::{
-    find_skill, lock_path, matches_skill, resolve_scope, resolve_target_agents, resolve_to_remove,
-    set_enabled_state, skill_filters, write_lock,
+    lock_path, resolve_target_agents, resolve_to_remove, set_enabled_state, skill_filters,
+    write_lock,
 };
 pub use crate::manager::types::{
     AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus, BackupStatus,
     DisableOutcome, DisableRequest, EnableOutcome, EnableRequest, InstallFailure, InstallSuccess,
-    ListRequest, ListedSkill, RemoveOutcome, RemoveRequest, Scope, UpdateOutcome, UpdateRequest,
+    ListRequest, ListedSkill, RemoveOutcome, RemoveRequest,
 };
 mod select;
 #[cfg(test)]
 mod tests;
 mod types;
 
-/// Skill manager: carries injectable context and runs add/list/remove/update.
+/// Skill manager: carries injectable context and runs add/list/remove/enable/disable.
 ///
 /// This is the high-level entry point for library consumers. It resolves an [`Env`]
 /// (home / config / cwd) once at construction, then every operation is a plain method
@@ -706,125 +705,6 @@ impl Manager {
             requested,
             removed,
         })
-    }
-
-    /// Update installed skills from their recorded (non-local) sources.
-    ///
-    /// Reads the lockfile, re-clones each recorded source once (skills sharing a source
-    /// are grouped), re-installs the latest version into the canonical dir (all linked
-    /// agents see the update immediately), and reports per-skill success/failure
-    /// counts. Locally-sourced skills are skipped.
-    ///
-    /// # Scope resolution
-    ///
-    /// [`UpdateRequest::scope`] is [`Scope::Auto`] by default: project scope if the
-    /// project has skills or a lockfile, otherwise global.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use agents_skills::{Manager, UpdateRequest};
-    ///
-    /// let tmp = tempfile::TempDir::new().unwrap();
-    /// let manager = Manager::builder()
-    ///     .home(tmp.path().join("home"))
-    ///     .cwd(tmp.path().join("project"))
-    ///     .build();
-    ///
-    /// // No lockfile in the scratch dir, so nothing to update.
-    /// let outcome = manager.update(&UpdateRequest::default())?;
-    /// assert_eq!(outcome.updated, 0);
-    /// # Ok::<(), agents_skills::Error>(())
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// [`SkillsError::Message`] when a recorded source fails to re-parse. Per-skill
-    /// clone/install failures are captured in [`UpdateOutcome::failures`] rather than
-    /// returned as errors.
-    pub fn update(&self, req: &UpdateRequest) -> Result<UpdateOutcome> {
-        let global = resolve_scope(req, &self.env);
-        let lock_path = lock_path(&self.env, global);
-        let lock = read_local_lock(&lock_path);
-        // Disabled skills are parked outside the canonical dir; skip them so they stay disabled.
-        let disabled_names: HashSet<String> = scan_disabled(&self.env, global)
-            .into_iter()
-            .map(|n| sanitize_name(&n))
-            .collect();
-        let skills: Vec<(String, LockEntry)> = lock
-            .skills
-            .iter()
-            .filter(|(name, entry)| {
-                matches_skill(name, &req.skills)
-                    && entry.source_type != "local"
-                    && !disabled_names.contains(&sanitize_name(name))
-            })
-            .map(|(n, e)| (n.clone(), e.clone()))
-            .collect();
-
-        if skills.is_empty() {
-            return Ok(UpdateOutcome {
-                global,
-                ..Default::default()
-            });
-        }
-
-        // Group by source (same source is cloned only once).
-        let mut by_source: BTreeMap<String, Vec<(String, LockEntry)>> = BTreeMap::new();
-        for (name, entry) in skills {
-            by_source
-                .entry(entry.source.clone())
-                .or_default()
-                .push((name, entry));
-        }
-
-        let mut outcome = UpdateOutcome {
-            global,
-            ..Default::default()
-        };
-        for (source, items) in &by_source {
-            let first = &items[0].1;
-            let clone_url = first.source_url.clone().unwrap_or_else(|| source.clone());
-            let parsed = parse_source(&clone_url)?;
-
-            // Fetch per source type (archive for github/gitlab/download, clone for git).
-            let fetched = match fetch_source(&parsed) {
-                Ok(v) => v,
-                Err(e) => {
-                    for (name, _) in items {
-                        outcome.failures.push(format!("{name}: {e}"));
-                        outcome.failed += 1;
-                    }
-                    continue;
-                }
-            };
-            let discovered =
-                discover_skills(&fetched.1, parsed.subpath.as_deref(), true).unwrap_or_default();
-
-            for (name, entry) in items {
-                let target = find_skill(&discovered, name, entry.skill_path.as_deref());
-                let Some(skill) = target else {
-                    outcome
-                        .failures
-                        .push(format!("Skill '{name}' not found in {source}"));
-                    outcome.failed += 1;
-                    continue;
-                };
-                let r = install_skill(skill, global, &self.env);
-                if r.success {
-                    outcome.updated += 1;
-                    outcome.updated_names.push(name.clone());
-                } else {
-                    outcome.failed += 1;
-                    outcome.failures.push(format!(
-                        "{name}: {}",
-                        r.error.unwrap_or_else(|| "install failed".to_string())
-                    ));
-                }
-            }
-        }
-
-        Ok(outcome)
     }
 }
 

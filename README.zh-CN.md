@@ -32,7 +32,7 @@ agents-skills agent --status          # 查看各 agent 的链接状态
 
 ## 功能说明
 
-`add`/`remove`/`update`/`disable`/`enable` 只操作规范目录，agent 通过符号链接自动
+`add`/`remove`/`disable`/`enable` 只操作规范目录，agent 通过符号链接自动
 共享。常用命令：
 
 ```bash
@@ -42,7 +42,6 @@ agents-skills agent --unlink claude-code          # 解除链接（并恢复备�
 agents-skills add anthropics/skills@pdf            # 仅安装指定技能
 agents-skills list --json                          # 机器可读输出
 agents-skills remove pdf                           # 移除指定技能
-agents-skills update                               # 按 lockfile 更新到最新版本
 agents-skills disable pdf                          # 禁用（移出规范目录，文件保留）
 agents-skills enable pdf                           # 重新启用（disable 的逆操作）
 ```
@@ -55,7 +54,7 @@ agents-skills enable pdf                           # 重新启用（disable 的�
 - `agent --status` 对未链接的 agent，分类列出其自身技能目录中的内容
   （`private skills` / `other files`）以及待恢复的备份（`backup parked at`）；
   已链接/规范目录的 agent 内容由 `list` 展示。
-- 已禁用的技能 `update` 会跳过；`list` 始终展示全部技能并标注 `enabled`/`disabled`。
+- `list` 始终展示全部技能并标注 `enabled`/`disabled`。
 
 ### 来源格式
 
@@ -109,7 +108,6 @@ HTTPS 来源直接下载并解压(zip / tar / tar.gz 压缩包,或单个文件�
 | `add`     | 从来源安装技能包              |
 | `remove`  | 移除已安装技能               |
 | `list`    | 列出已安装技能               |
-| `update`  | 将技能更新到最新版本            |
 | `disable` | 禁用已安装技能               |
 | `enable`  | 重新启用已禁用的技能            |
 | `agent`   | 链接/解除链接/查看 agent 链接状态 |

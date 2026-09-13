@@ -35,7 +35,7 @@ directory pointing at the canonical directory; skills installed afterwards via
 
 ## How it works
 
-`add`/`remove`/`update`/`disable`/`enable` only operate on the canonical
+`add`/`remove`/`disable`/`enable` only operate on the canonical
 directory; agents share it automatically through the symlinks. Common commands:
 
 ```bash
@@ -45,7 +45,6 @@ agents-skills agent --unlink claude-code          # unlink (and restore the back
 agents-skills add anthropics/skills@pdf            # install only the specified skill
 agents-skills list --json                          # machine-readable output
 agents-skills remove pdf                           # remove a skill
-agents-skills update                               # update to the latest versions per the lockfile
 agents-skills disable pdf                          # disable (moved out of the canonical directory, files kept)
 agents-skills enable pdf                           # re-enable (inverse of disable)
 ```
@@ -63,8 +62,7 @@ agents-skills enable pdf                           # re-enable (inverse of disab
   skills directory (`private skills` / `other files`) plus any backup waiting
   to be restored (`backup parked at`); content of linked/canonical agents is
   shown by `list`.
-- `update` skips disabled skills; `list` always shows every skill, tagged
-  `enabled`/`disabled`.
+- `list` always shows every skill, tagged `enabled`/`disabled`.
 
 ### Source formats
 
@@ -124,7 +122,6 @@ directories shadow deeper ones.
 | `add`     | Install a skill pack from a source     |
 | `remove`  | Remove installed skills                |
 | `list`    | List installed skills                  |
-| `update`  | Update skills to the latest version    |
 | `disable` | Disable an installed skill             |
 | `enable`  | Re-enable a disabled skill             |
 | `agent`   | Link / unlink / show agent link status |

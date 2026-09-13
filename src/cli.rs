@@ -32,8 +32,6 @@ pub enum Command {
     Remove(RemoveArgs),
     /// List installed skills
     List(ListArgs),
-    /// Update skills to latest versions
-    Update(UpdateArgs),
     /// Disable installed skills
     Disable(DisableArgs),
     /// Enable previously disabled skills
@@ -84,15 +82,6 @@ pub struct ListArgs {
     /// Output as JSON (machine-readable, no ANSI codes)
     #[arg(long = "json")]
     pub json: bool,
-}
-
-#[derive(Debug, Args)]
-pub struct UpdateArgs {
-    /// Skill names to update
-    pub skills: Vec<String>,
-    /// Update project skills only, in the given directory instead of global
-    #[arg(short = 'p', long = "project", value_name = "DIR")]
-    pub project: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]

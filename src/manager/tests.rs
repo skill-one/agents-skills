@@ -1,57 +1,9 @@
 //! Unit tests for the manager's selection helpers (moved verbatim from the bottom
 //! of the original `manager.rs`).
 
-use crate::core::discover::Skill;
-use crate::core::test_utils::{env_at, write_and_parse_skill};
+use crate::core::test_utils::env_at;
 use crate::error::SkillsError;
-use crate::manager::select::{
-    find_skill, matches_skill, resolve_target_agents, resolve_to_remove, skill_filters,
-};
-
-fn skills_with_dirs(pairs: &[(&str, &str)]) -> Vec<Skill> {
-    pairs
-        .iter()
-        .map(|(dir, name)| {
-            let mut s = write_and_parse_skill(std::path::Path::new(dir), name);
-            // write_and_parse_skill derives dir from the SKILL.md path; use the skill dir.
-            s.dir = std::path::PathBuf::from(dir);
-            s
-        })
-        .collect()
-}
-
-#[test]
-fn find_skill_prefers_name_then_skill_path() {
-    let tmp = tempfile::TempDir::new().unwrap();
-    let a = tmp.path().join("dir-a");
-    let b = tmp.path().join("dir-b");
-    std::fs::create_dir_all(&a).unwrap();
-    std::fs::create_dir_all(&b).unwrap();
-    let skills = skills_with_dirs(&[
-        (a.to_str().unwrap(), "alpha"),
-        (b.to_str().unwrap(), "beta"),
-    ]);
-
-    // By (sanitized) name.
-    assert_eq!(find_skill(&skills, "Alpha", None).unwrap().name, "alpha");
-    // By skillPath directory name.
-    assert_eq!(
-        find_skill(&skills, "missing", Some("x/dir-b"))
-            .unwrap()
-            .name,
-        "beta"
-    );
-    // Ambiguous without a match.
-    assert!(find_skill(&skills, "missing", None).is_none());
-}
-
-#[test]
-fn matches_skill_filters_case_insensitively() {
-    let filter = vec!["PDF".to_string()];
-    assert!(matches_skill("pdf", &filter));
-    assert!(!matches_skill("git", &filter));
-    assert!(matches_skill("anything", &[]));
-}
+use crate::manager::select::{resolve_target_agents, resolve_to_remove, skill_filters};
 
 #[test]
 fn skill_filters_merges_args_and_at_filter() {

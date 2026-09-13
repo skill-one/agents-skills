@@ -30,7 +30,7 @@ layer touch domain logic directly.
 ```
 src/
 ├── lib.rs              Library root: Manager facade + request/result types + private core module
-├── manager/            High-level Manager facade (add/list/remove/update/disable/enable/link)
+├── manager/            High-level Manager facade (add/list/remove/disable/enable/link)
 │   ├── mod.rs          Manager methods (one per CLI command)
 │   ├── types.rs        Request/outcome structs shared with the CLI layer
 │   ├── select.rs       Selection helpers (skill matching + agent resolution)
@@ -60,7 +60,6 @@ src/
     ├── add.rs
     ├── remove.rs
     ├── list.rs
-    ├── update.rs
     ├── disable.rs
     ├── enable.rs
     └── agent.rs

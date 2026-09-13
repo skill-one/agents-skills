@@ -18,7 +18,7 @@ use crate::core::lock::{
 };
 use crate::core::source::Source;
 use crate::error::{Result, SkillsError};
-use crate::manager::types::{InstallSuccess, Scope, UpdateRequest};
+use crate::manager::types::InstallSuccess;
 
 /// Resolve agent selection: `"*"` → all; names → validated; empty → auto-detect + universal.
 pub(crate) fn resolve_target_agents(names: &[String], env: &Env) -> Result<Vec<&'static Agent>> {
@@ -120,44 +120,6 @@ pub(crate) fn skill_filters(skills: &[String], skill_filter: Option<&str>) -> Ve
     filters
 }
 
-/// Match a discovered skill by sanitized name or skillPath directory name.
-pub(crate) fn find_skill<'a>(
-    discovered: &'a [Skill],
-    name: &str,
-    skill_path: Option<&str>,
-) -> Option<&'a Skill> {
-    let sanitized = sanitize_name(name);
-    // Prefer matching by (sanitized) name.
-    if let Some(s) = discovered
-        .iter()
-        .find(|s| sanitize_name(&s.name) == sanitized)
-    {
-        return Some(s);
-    }
-    // Match by skillPath (directory name).
-    if let Some(sp) = skill_path
-        && let Some(dn) = sp.split('/').rfind(|p| !p.is_empty())
-        && let Some(s) = discovered.iter().find(|s| {
-            s.dir
-                .file_name()
-                .map(|f| f.to_string_lossy() == dn)
-                .unwrap_or(false)
-        })
-    {
-        return Some(s);
-    }
-    discovered.first().filter(|_| discovered.len() == 1)
-}
-
-/// Whether a skill name matches a case-insensitive filter (empty filter matches all).
-pub(crate) fn matches_skill(name: &str, filter: &[String]) -> bool {
-    if filter.is_empty() {
-        return true;
-    }
-    let lower = name.to_lowercase();
-    filter.iter().any(|f| f.to_lowercase() == lower)
-}
-
 /// Resolve skill names to remove: match by sanitized name, lock keys take priority.
 pub(crate) fn resolve_to_remove(
     requested: &[String],
@@ -204,19 +166,4 @@ pub(crate) fn write_lock(
         std::fs::create_dir_all(parent)?;
     }
     write_local_lock(&lock, &lock_path)
-}
-
-pub(crate) fn resolve_scope(req: &UpdateRequest, env: &Env) -> bool {
-    match req.scope {
-        Scope::Global => true,
-        Scope::Project => false,
-        Scope::Auto => !has_project_skills(env),
-    }
-}
-
-fn has_project_skills(env: &Env) -> bool {
-    if local_lock_path(&env.cwd).exists() {
-        return true;
-    }
-    env.cwd.join(".agents/skills").exists()
 }

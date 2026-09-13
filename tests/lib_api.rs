@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use agents_skills::{
     AddRequest, AgentRequest, DisableRequest, EnableRequest, LinkOutcome, ListRequest, Manager,
-    RemoveRequest, SkillsError, UpdateRequest,
+    RemoveRequest, SkillsError,
 };
 
 fn write_skill_source(root: &Path, rel_dir: &str, name: &str) -> PathBuf {
@@ -400,19 +400,6 @@ fn lib_list_agent_filter_and_visibility() {
 }
 
 #[test]
-fn lib_update_empty_is_noop() {
-    let tmp = tempfile::TempDir::new().unwrap();
-    let manager = Manager::builder()
-        .home(tmp.path().join("home"))
-        .cwd(tmp.path().join("project"))
-        .build();
-
-    let outcome = manager.update(&UpdateRequest::default()).unwrap();
-    assert_eq!(outcome.updated, 0);
-    assert_eq!(outcome.failed, 0);
-}
-
-#[test]
 fn lib_disable_then_enable_roundtrip() {
     let tmp = tempfile::TempDir::new().unwrap();
     let cwd = tmp.path().join("project");
@@ -563,60 +550,3 @@ fn lib_disable_global_scope_moves_home_skill() {
     assert!(home.join(".agents/disabled-skills/pdf/SKILL.md").exists());
 }
 
-#[test]
-#[cfg(unix)]
-fn lib_update_reports_install_failures_without_updated_names() {
-    use std::os::unix::fs::PermissionsExt;
-
-    let tmp = tempfile::TempDir::new().unwrap();
-
-    // A real git repo so the lock records a non-local (git) source: `update` re-fetches it.
-    let repo_dir = tmp.path().join("repo");
-    std::fs::create_dir_all(&repo_dir).unwrap();
-    let repo = git2::Repository::init(&repo_dir).unwrap();
-    std::fs::write(
-        repo_dir.join("SKILL.md"),
-        "---\nname: pdf\ndescription: does pdf\n---\n\n# pdf\n",
-    )
-    .unwrap();
-    let mut index = repo.index().unwrap();
-    index.add_path(Path::new("SKILL.md")).unwrap();
-    index.write().unwrap();
-    let tree_id = index.write_tree().unwrap();
-    let tree = repo.find_tree(tree_id).unwrap();
-    let sig = git2::Signature::now("test", "test@example.com").unwrap();
-    repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
-        .unwrap();
-
-    let cwd = tmp.path().join("project");
-    std::fs::create_dir_all(&cwd).unwrap();
-    let manager = Manager::builder()
-        .home(tmp.path().join("home"))
-        .config(tmp.path().join("config"))
-        .cwd(cwd.clone())
-        .build();
-    manager
-        .add(&AddRequest::new(format!("file://{}", repo_dir.display())))
-        .unwrap();
-
-    // Sabotage the canonical base: a read-only skills dir makes the staged
-    // install fail at staging creation, before anything is touched.
-    let skills_dir = cwd.join(".agents/skills");
-    let perms = std::fs::metadata(&skills_dir).unwrap().permissions();
-    std::fs::set_permissions(&skills_dir, std::fs::Permissions::from_mode(perms.mode() & !0o222))
-        .unwrap();
-
-    let outcome = manager.update(&UpdateRequest::default()).unwrap();
-
-    // Restore permissions so temp-dir cleanup can succeed.
-    std::fs::set_permissions(&skills_dir, perms).unwrap();
-
-    assert_eq!(outcome.updated, 0);
-    assert_eq!(outcome.failed, 1);
-    assert!(
-        outcome.updated_names.is_empty(),
-        "failed skills must not be reported as updated"
-    );
-    assert_eq!(outcome.failures.len(), 1);
-    assert!(outcome.failures[0].starts_with("pdf:"));
-}

@@ -43,8 +43,7 @@ pub mod manager;
 pub use manager::{
     AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus, BackupStatus,
     DisableOutcome, DisableRequest, EnableOutcome, EnableRequest, InstallFailure, InstallSuccess,
-    ListRequest, ListedSkill, Manager, ManagerBuilder, RemoveOutcome, RemoveRequest, Scope,
-    UpdateOutcome, UpdateRequest,
+    ListRequest, ListedSkill, Manager, ManagerBuilder, RemoveOutcome, RemoveRequest,
 };
 
 // Data types carried by the facade's outcomes (implementation lives in the private core).

@@ -53,7 +53,6 @@ fn main() -> agents_skills::Result<()> {
 | [`Manager::agent_status`] | `bool`（global）   | `Vec<`[`AgentStatus`]`>`               |
 | [`Manager::list`]         | [`ListRequest`]    | `Vec<`[`ListedSkill`]`>`（可序列化）   |
 | [`Manager::remove`]       | [`RemoveRequest`]  | [`RemoveOutcome`]（已移除名称）        |
-| [`Manager::update`]       | [`UpdateRequest`]  | [`UpdateOutcome`]（更新/失败计数）     |
 | [`Manager::disable`]      | [`DisableRequest`] | [`DisableOutcome`]（已禁用名称）       |
 | [`Manager::enable`]       | [`EnableRequest`]  | [`EnableOutcome`]（已启用名称）        |
 
@@ -65,7 +64,6 @@ fn main() -> agents_skills::Result<()> {
 | [`AgentRequest`]   | `agents: Vec<String>`、`unlink: bool`、`migrate: bool`                                                      |
 | [`ListRequest`]    | `agents: Vec<String>`（空 = 全部 agent）                                                                    |
 | [`RemoveRequest`]  | `skills: Vec<String>`、`all: bool`                                                                          |
-| [`UpdateRequest`]  | `skills: Vec<String>`、`scope: Scope`                                                                       |
 | [`DisableRequest`] | `skills: Vec<String>`、`all: bool`                                                                          |
 | [`EnableRequest`]  | `skills: Vec<String>`、`all: bool`                                                                          |
 
@@ -74,10 +72,6 @@ fn main() -> agents_skills::Result<()> {
 `Env.cwd`（可用 `Manager::builder().cwd()` 覆盖，对应 CLI 的 `--project <目录>`）。
 `AgentRequest` 与 `ListRequest` 的 `agents` 字段用于限定 agent（`"*"` 或具体名，
 空 = 自动探测）。
-
-[`UpdateRequest`] 的 `scope` 用于覆盖自动作用域判定，取值
-[`Scope::Auto`]（默认，项目有技能/锁文件则项目级，否则全局）、[`Scope::Global`]、
-[`Scope::Project`]。
 
 ### 与 CLI 的对应约定
 
@@ -113,9 +107,6 @@ let json = serde_json::to_string_pretty(&skills)?; // CLI 的 list --json
 
 // 移除技能
 manager.remove(&RemoveRequest { skills: vec!["pdf".into()], ..Default::default() })?;
-
-// 更新技能
-let outcome = manager.update(&UpdateRequest::default())?;
 
 // 禁用 / 启用（把技能目录移出 / 移回规范目录）
 manager.disable(&DisableRequest { skills: vec!["pdf".into()], ..Default::default() })?;
@@ -155,7 +146,6 @@ cargo run --example add_skill   # 通过 Manager 安装到真实环境
 [`Manager::agent_status`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.agent_status
 [`Manager::list`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.list
 [`Manager::remove`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.remove
-[`Manager::update`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.update
 [`Manager::disable`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.disable
 [`Manager::enable`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.enable
 [`ManagerBuilder`]: https://docs.rs/agents-skills/latest/agents_skills/struct.ManagerBuilder.html
@@ -169,12 +159,7 @@ cargo run --example add_skill   # 通过 Manager 安装到真实环境
 [`ListedSkill`]: https://docs.rs/agents-skills/latest/agents_skills/struct.ListedSkill.html
 [`RemoveRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.RemoveRequest.html
 [`RemoveOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.RemoveOutcome.html
-[`UpdateRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.UpdateRequest.html
-[`UpdateOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.UpdateOutcome.html
 [`DisableRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.DisableRequest.html
 [`DisableOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.DisableOutcome.html
 [`EnableRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.EnableRequest.html
 [`EnableOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.EnableOutcome.html
-[`Scope::Auto`]: https://docs.rs/agents-skills/latest/agents_skills/enum.Scope.html
-[`Scope::Global`]: https://docs.rs/agents-skills/latest/agents_skills/enum.Scope.html
-[`Scope::Project`]: https://docs.rs/agents-skills/latest/agents_skills/enum.Scope.html
