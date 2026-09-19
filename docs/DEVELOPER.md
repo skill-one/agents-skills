@@ -43,7 +43,7 @@ src/
 │   ├── agents.jsonl    The agent table: one JSON object per agent line
 │   ├── discover.rs     SKILL.md discovery + frontmatter parsing
 │   ├── fetch.rs        git clone / HTTP download / archive unpacking
-│   ├── github.rs       GitHub API single-skill fast path
+│   ├── github.rs       GitHub API fetching (tree/contents listing, LFS, parallel downloads)
 │   ├── install.rs      Install skills into the canonical directory + installed-skills listing
 │   ├── link/           Directory-level agent linking (link/unlink)
 │   │   ├── mod.rs      Link orchestration + adoption of pre-existing content

@@ -7,6 +7,45 @@ the project adheres to [Semantic Versioning](https://semver.org/): while in
 
 For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## [Unreleased]
+
+### Fixed
+
+- fix(add): a GitLab `subpath` install now works. A whole-repo archive wraps every
+  entry in a `{repo}-{ref}` directory, which was handed to discovery as-is, so
+  subpath resolution looked one level too deep — every GitLab subpath ended in
+  "No valid skills found". Every fetch path now returns the repository root, and a
+  subpath that resolves to nothing is named in the error
+  (`Subpath "…" not found in …`) instead of ending as a generic failure.
+- fix(add): a `git/trees` listing that GitHub truncates (large repositories) now
+  falls back to per-directory `contents` listing — the workaround the GitHub docs
+  recommend — instead of failing the install.
+- fix(add): Git LFS pointers are fetched from `media.githubusercontent.com`
+  instead of being installed as ~130-byte text stubs.
+- fix(add): executable files keep their `+x` bit. Archives are downloaded as
+  `tar.gz` (zip drops Unix modes) and API downloads restore the mode reported by
+  the `git/trees` listing.
+
+### Changed
+
+- **(breaking)** `add` no longer falls back to a whole-repo archive when the GitHub
+  API cannot serve a narrowed request (a `subpath`, or `--skill` / `@skill`). The
+  fallback silently widened the download to the entire repository, and for the two
+  commonest failures — a mistyped subpath or skill name — it downloaded everything
+  only to report the same error. Those cases now fail immediately with
+  `Subpath "…" not found in …` or `No skill named "…" in …` (plus a `--list` hint);
+  a genuinely unavailable API reports the failure and names `GITHUB_TOKEN` as the
+  remedy for the 60 requests/hour unauthenticated rate limit. A repository-wide
+  install, `--list`, and GitLab keep using the archive — it is their only path.
+
+### Added
+
+- feat(add): `GITHUB_TOKEN` is also sent to `raw.githubusercontent.com` and
+  `media.githubusercontent.com`, so private repositories install too.
+- perf(add): files are fetched with a small thread pool (8 in parallel) instead
+  of one request at a time, and all candidate `SKILL.md` manifests for
+  `--skill` / `@skill` are fetched in a single batch.
+
 ## [0.17.0] — 2026-09-19
 
 ### Removed
@@ -350,7 +389,7 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 - chore: upgrade git2 to 0.21 to fix RUSTSEC advisories.
 - chore: dual license, GitHub Actions, crates.io release metadata.
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.12.3...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.17.0...HEAD
 [0.12.3]: https://github.com/skill-one/agents-skills/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/skill-one/agents-skills/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/skill-one/agents-skills/compare/v0.12.0...v0.12.1

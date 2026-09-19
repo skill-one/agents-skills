@@ -63,20 +63,23 @@ impl Source {
     /// Whole-repo archive URL for hosts that publish tarballs without a git clone
     /// (GitHub codeload, GitLab). `None` when the archive would need a ref we cannot
     /// resolve (e.g. GitLab without an explicit branch/tag).
+    ///
+    /// `tar.gz` is deliberate: it keeps the Unix mode of every entry, so executable
+    /// bits survive the round trip (zip archives drop them).
     pub fn archive_url(&self) -> Option<String> {
         match self.ty {
             SourceType::Github => {
                 // `HEAD` resolves to the default branch on codeload.
                 let r = self.r#ref.clone().unwrap_or_else(|| "HEAD".to_string());
                 Some(format!(
-                    "https://codeload.github.com/{}/zip/{r}",
+                    "https://codeload.github.com/{}/tar.gz/{r}",
                     owner_repo(&self.url)
                 ))
             }
             SourceType::Gitlab => {
                 let r = self.r#ref.clone()?;
                 let base = self.url.trim_end_matches(".git");
-                Some(format!("{base}/-/archive/{r}/{r}.zip"))
+                Some(format!("{base}/-/archive/{r}/{r}.tar.gz"))
             }
             _ => None,
         }
@@ -524,7 +527,7 @@ mod tests {
         let s = parse_source("acme/skills").unwrap();
         assert_eq!(
             s.archive_url().as_deref(),
-            Some("https://codeload.github.com/acme/skills/zip/HEAD")
+            Some("https://codeload.github.com/acme/skills/tar.gz/HEAD")
         );
     }
 
@@ -533,7 +536,7 @@ mod tests {
         let s = parse_source("https://github.com/acme/skills/tree/main").unwrap();
         assert_eq!(
             s.archive_url().as_deref(),
-            Some("https://codeload.github.com/acme/skills/zip/main")
+            Some("https://codeload.github.com/acme/skills/tar.gz/main")
         );
     }
 
@@ -542,7 +545,7 @@ mod tests {
         let s = parse_source("https://gitlab.com/group/sub/repo/-/tree/main").unwrap();
         assert_eq!(
             s.archive_url().as_deref(),
-            Some("https://gitlab.com/group/sub/repo/-/archive/main/main.zip")
+            Some("https://gitlab.com/group/sub/repo/-/archive/main/main.tar.gz")
         );
     }
 

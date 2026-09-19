@@ -7,6 +7,39 @@
 
 英文版见 [CHANGELOG.md](CHANGELOG.md)。
 
+## [Unreleased]
+
+### 修复
+
+- fix(add)：GitLab 的子路径安装现在可用。整仓归档会把所有内容包在
+  `{repo}-{ref}` 目录里,而它被原样交给了发现逻辑,导致子路径解析多算了一层——
+  所有 GitLab 子路径都以 "No valid skills found" 结束。现在所有取法都返回仓库根,
+  解析不到内容的子路径也会直接报出名字（`Subpath "…" not found in …`），
+  不再是含糊的失败。
+- fix(add)：GitHub 对大仓库会截断 `git/trees` 列表,此时改为逐目录调用 `contents`
+  API（GitHub 官方文档推荐的变通做法），而不是让安装失败。
+- fix(add)：Git LFS 指针改为从 `media.githubusercontent.com` 取真实对象,不再把约
+  130 字节的文本桩当成文件装上。
+- fix(add)：可执行文件保留 `+x` 位。归档改用 `tar.gz` 下载（zip 会丢失 Unix 权限
+  位），API 下载则按 `git/trees` 列表里的 mode 还原。
+
+### 变更
+
+- **(breaking)** 当 GitHub API 无法服务"收窄后的请求"（`subpath`，或
+  `--skill` / `@skill`）时,`add` 不再回退去下载整仓归档。该回退会悄悄把下载范围
+  放大到整个仓库,而最常见的两种失败——子路径或技能名写错——更是会先下完整仓再报
+  同一个错。现在这些情况立即失败并给出 `Subpath "…" not found in …` 或
+  `No skill named "…" in …`（附 `--list` 提示）；确实是 API 不可用时,则明确报错
+  并把 `GITHUB_TOKEN` 作为未认证 60 次/小时限额的解法点出来。整仓安装、`--list`
+  与 GitLab 仍然走归档——那是它们唯一的路径。
+
+### 新增
+
+- feat(add)：`GITHUB_TOKEN` 现在也会发送给 `raw.githubusercontent.com` 与
+  `media.githubusercontent.com`,因此私有仓库也能安装。
+- perf(add)：文件改为小线程池并发下载（8 路），不再是逐个请求；`--skill` /
+  `@skill` 的所有候选 `SKILL.md` 也改为一次批量抓取。
+
 ## [0.17.0] — 2026-09-19
 
 ### 移除
@@ -311,7 +344,7 @@
 - chore:升级 git2 至 0.21 以修复 RUSTSEC 安全通告。
 - chore:双许可证、GitHub Actions、crates.io 发布元数据。
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.12.3...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.17.0...HEAD
 [0.12.3]: https://github.com/skill-one/agents-skills/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/skill-one/agents-skills/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/skill-one/agents-skills/compare/v0.12.0...v0.12.1

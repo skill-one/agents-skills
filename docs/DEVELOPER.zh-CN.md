@@ -37,7 +37,7 @@ src/
 │   ├── agents.jsonl    agent 表:每个 agent 一行 JSON
 │   ├── discover.rs     SKILL.md 发现 + frontmatter 解析
 │   ├── fetch.rs        git 克隆 / HTTP 下载 / 归档解包
-│   ├── github.rs       GitHub API 单技能快速拉取
+│   ├── github.rs       GitHub API 拉取（tree/contents 列表、LFS、并发下载）
 │   ├── install.rs      安装技能到规范目录 + 已装清单
 │   ├── link/           目录级 agent 链接（link/unlink）
 │   │   ├── mod.rs      链接编排 + 存量内容并入

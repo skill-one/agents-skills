@@ -3,7 +3,7 @@
 //! The manager is pure data: it returns structured outcomes and never prints or exits;
 //! the CLI layer (src/commands) is responsible for rendering.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::core::agents::{
     AGENTS, Env, config_home, disabled_skills_dir, home, is_installed, is_native,
@@ -16,7 +16,7 @@ use crate::core::install::{
     scan_installed,
 };
 use crate::core::link::{is_agent_linked, link_agent, private_content, unlink_agent};
-use crate::core::source::{SourceType, parse_source};
+use crate::core::source::{Source, SourceType, parse_source};
 use crate::error::{Result, SkillsError};
 
 use crate::manager::select::{
@@ -31,6 +31,96 @@ mod select;
 #[cfg(test)]
 mod tests;
 mod types;
+
+/// Require `subpath` to exist inside the fetched `root`.
+///
+/// The archive path is the one that needs this check: it serves sources the API
+/// cannot narrow (GitLab), so a subpath that resolves to nothing there is a user
+/// error worth naming.
+fn require_subpath(root: &Path, subpath: &str, source: &Source) -> Result<()> {
+    if root.join(subpath).exists() {
+        return Ok(());
+    }
+    Err(subpath_error(source, subpath))
+}
+
+/// The error for a `subpath` that resolved to nothing.
+fn subpath_error(source: &Source, subpath: &str) -> SkillsError {
+    SkillsError::msg(format!(
+        "Subpath \"{subpath}\" not found in {} — check the path and the ref.",
+        source_label(source)
+    ))
+}
+
+/// The error for a skill name the API could not find.
+fn missing_skill_error(parsed: &Source, req: &AddRequest, name: &str) -> SkillsError {
+    SkillsError::msg(format!(
+        "No skill named \"{name}\" in {}. Run `agents-skills add {} --list` to list the available skills.",
+        source_label(parsed),
+        req.source
+    ))
+}
+
+/// A repository URL without its `.git` suffix, for error messages.
+fn source_label(source: &Source) -> &str {
+    source.url.trim_end_matches(".git")
+}
+
+/// A hint appended when a failure looks like a GitHub rate limit.
+///
+/// The unauthenticated limit is 60 requests/hour per IP, which a handful of
+/// narrowed installs can exhaust; a token raises it to 5000.
+fn rate_limit_hint(error: &SkillsError) -> &'static str {
+    match error {
+        SkillsError::Http(e) if matches!(e.as_ref(), ureq::Error::StatusCode(403 | 429)) => {
+            " Set GITHUB_TOKEN to raise the API rate limit from 60 to 5000 requests/hour."
+        }
+        _ => "",
+    }
+}
+
+/// Whether this request must be served by the GitHub API.
+///
+/// Both accepted shapes narrow the install — a `subpath`, or `--skill` / `@skill` —
+/// so the API can fetch exactly that much. Everything else is served by the
+/// whole-repo archive, which the API cannot narrow: a repository-wide install,
+/// `--list` (it needs the whole tree to report every skill), and GitLab (no API
+/// path is implemented for it).
+fn uses_github_api(parsed: &Source, list_only: bool) -> bool {
+    parsed.ty == SourceType::Github
+        && ((parsed.skill_filter.is_some() && !list_only) || parsed.subpath.is_some())
+}
+
+/// Fetch a narrowed request through the GitHub API.
+///
+/// There is deliberately no fallback to the whole-repo archive. It would silently
+/// widen a subpath install to the entire repository — and in the two commonest
+/// failures, a mistyped subpath or skill name, it would download everything only to
+/// report the very same error.
+fn fetch_narrowed(
+    parsed: &Source,
+    req: &AddRequest,
+    include_internal: bool,
+) -> Result<(tempfile::TempDir, PathBuf)> {
+    let fetched = match (parsed.skill_filter.as_deref(), req.list_only) {
+        (Some(name), false) => fetch_skill_via_api(parsed, name, include_internal),
+        _ => fetch_subdir_via_api(parsed),
+    };
+
+    match fetched {
+        Ok(Some(v)) => Ok(v),
+        // The API answered: the request simply matched nothing in the repository.
+        Ok(None) => Err(match parsed.skill_filter.as_deref() {
+            Some(name) => missing_skill_error(parsed, req, name),
+            None => subpath_error(parsed, parsed.subpath.as_deref().unwrap_or_default()),
+        }),
+        Err(e) => Err(SkillsError::msg(format!(
+            "GitHub API request failed for {}: {e}.{}",
+            source_label(parsed),
+            rate_limit_hint(&e)
+        ))),
+    }
+}
 
 /// Skill manager: carries injectable context and runs add/list/remove/enable/disable.
 ///
@@ -110,6 +200,17 @@ impl Manager {
     /// `add` never links any agent: use [`Manager::agent`] to expose the canonical
     /// dir to an agent afterwards.
     ///
+    /// # Fetching
+    ///
+    /// A request narrowed by a `subpath` or by a skill name (`--skill` / `@skill`)
+    /// is served by the GitHub API, which downloads only the matching files — and
+    /// which never falls back to a whole-repo archive, so a failure is reported
+    /// instead of silently widening the install. Set `GITHUB_TOKEN` to raise its
+    /// rate limit (60 → 5000 requests/hour). Everything else is served by the
+    /// whole-repo archive, the API being unable to narrow it: a repository-wide
+    /// install, `list_only` (it needs the whole tree to report every skill), and
+    /// GitLab.
+    ///
     /// # Selection defaults
     ///
     /// - `skills` empty → all discovered skills; a `"*"` entry → all as well.
@@ -147,6 +248,8 @@ impl Manager {
     ///
     /// - [`SkillsError::Message`] when the source is invalid, unreadable, or contains
     ///   no valid skill (a `SKILL.md` with `name` and `description`).
+    /// - [`SkillsError::Message`] when a narrowed GitHub fetch fails: an unknown
+    ///   `subpath` or skill name, or an API that is unavailable (see *Fetching*).
     /// - [`SkillsError::Git`], [`SkillsError::Http`], [`SkillsError::Io`],
     ///   [`SkillsError::Zip`], etc. for transport and filesystem failures.
     pub fn add(&self, req: &AddRequest) -> Result<AddOutcome> {
@@ -171,31 +274,33 @@ impl Manager {
             skills = discover_skills(path, parsed.subpath.as_deref(), include_internal)?;
             _temp = None;
         } else {
-            // Fast path: fetch only what is needed via the GitHub API when
-            // possible — the `@skill`-selected dir, or every file under the
-            // subpath — falling back to the whole-repo archive on any failure.
-            let fast: Option<(tempfile::TempDir, PathBuf)> =
-                if let (Some(name), false) = (parsed.skill_filter.as_deref(), req.list_only) {
-                    fetch_skill_via_api(&parsed, name, include_internal)
-                        .ok()
-                        .flatten()
-                } else if parsed.ty == SourceType::Github {
-                    fetch_subdir_via_api(&parsed).ok().flatten()
-                } else {
-                    None
-                };
-            let (tmp, root) = match fast {
-                Some(v) => v,
-                None => fetch_source(&parsed)?,
+            // Two fetch modes, both handing back a repository-root temp dir so that
+            // the subpath below means the same thing either way: the GitHub API for
+            // narrowed requests, the whole-repo archive for everything it cannot
+            // serve. See `uses_github_api` / `fetch_narrowed`.
+            let (tmp, root) = if uses_github_api(&parsed, req.list_only) {
+                fetch_narrowed(&parsed, req, include_internal)?
+            } else {
+                fetch_source(&parsed)?
             };
+            if let Some(sp) = parsed.subpath.as_deref() {
+                require_subpath(&root, sp, &parsed)?;
+            }
             skills = discover_skills(&root, parsed.subpath.as_deref(), include_internal)?;
             _temp = Some(tmp);
         }
 
         if skills.is_empty() {
-            return Err(SkillsError::msg(
-                "No valid skills found. Skills require a SKILL.md with name and description.",
-            ));
+            let msg = match parsed.subpath.as_deref() {
+                Some(sp) => format!(
+                    "No skills found under \"{sp}\". A skill needs a SKILL.md with name and description."
+                ),
+                None => {
+                    "No valid skills found. Skills require a SKILL.md with name and description."
+                        .to_string()
+                }
+            };
+            return Err(SkillsError::msg(msg));
         }
 
         // --list: report discovered skills without installing.

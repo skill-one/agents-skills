@@ -3,6 +3,7 @@
 //! All functions return `tempfile::TempDir`; callers hold it until install finishes
 //! (TempDir drops and cleans up automatically).
 
+use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -50,11 +51,17 @@ pub(crate) fn with_retry<T>(attempts: usize, mut f: impl FnMut() -> Result<T>) -
 /// `/-/archive`) instead of a git clone; only generic git / SSH URLs and GitLab
 /// sources without a resolvable ref fall back to a shallow clone. The caller
 /// holds the returned `TempDir` until install finishes.
+///
+/// `root` is always the **repository root**, never the archive's wrapper
+/// directory, so a `subpath` means the same thing on every fetch path (see
+/// [`archive_root`]).
 pub fn fetch_source(parsed: &Source) -> Result<(tempfile::TempDir, std::path::PathBuf)> {
     match parsed.ty {
         SourceType::Github | SourceType::Gitlab => {
             if let Some(url) = parsed.archive_url() {
-                return download_and_extract(&url);
+                let (tmp, root) = download_and_extract(&url)?;
+                let root = archive_root(&root, parsed.subpath.as_deref());
+                return Ok((tmp, root));
             }
             let tmp = clone_repo(&parsed.url, parsed.r#ref.as_deref())?;
             let root = tmp.path().to_path_buf();
@@ -70,6 +77,41 @@ pub fn fetch_source(parsed: &Source) -> Result<(tempfile::TempDir, std::path::Pa
             "local sources are handled by the caller, not fetch_source",
         )),
     }
+}
+
+/// The repository root inside a freshly extracted whole-repo archive.
+///
+/// codeload and GitLab wrap every entry in a single `{repo}-{ref}` directory
+/// (GitLab also appends the commit SHA). Dropping that wrapper is what makes `root`
+/// mean "repository root" on *every* fetch path, so a `subpath` resolves
+/// identically whether the files came from the GitHub API fast path or from an
+/// archive.
+///
+/// The wrapper is recognised by being the *only* entry, not by its name: GitLab
+/// appends a SHA and codeload rewrites `HEAD` to the default branch, so no naming
+/// rule holds across hosts. Since it is the only entry, unwrapping cannot lose
+/// content. When a `subpath` is given the wrapper is only dropped if the subpath
+/// really sits inside it, which keeps a repository whose entire content is one
+/// directory (an archive without a wrapper) resolving through it.
+fn archive_root(extract_root: &Path, subpath: Option<&str>) -> PathBuf {
+    let fallback = || extract_root.to_path_buf();
+
+    let Ok(mut entries) = fs::read_dir(extract_root) else {
+        return fallback();
+    };
+    let Some(Ok(entry)) = entries.next() else {
+        return fallback();
+    };
+    let only = entry.path();
+    if entries.next().is_some() || !only.is_dir() {
+        return fallback();
+    }
+    if let Some(sp) = subpath
+        && !only.join(sp).exists()
+    {
+        return fallback();
+    }
+    only
 }
 
 /// Shallow-clone a git repo into a temp dir; checkout `reference` when it is a branch/tag.
@@ -267,6 +309,77 @@ fn safe_join(dest: &Path, rel: &Path) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Create `root/rel`, creating any missing parent directory.
+    fn touch(root: &Path, rel: &str) {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "x").unwrap();
+    }
+
+    #[test]
+    fn archive_root_strips_the_codeload_wrapper() {
+        // codeload wraps every entry in `{repo}-{ref}`.
+        let tmp = tempfile::TempDir::new().unwrap();
+        touch(tmp.path(), "skills-main/skills/pdf/SKILL.md");
+        touch(tmp.path(), "skills-main/README.md");
+
+        let with_subpath = archive_root(tmp.path(), Some("skills/pdf"));
+        assert_eq!(with_subpath, tmp.path().join("skills-main"));
+        assert!(with_subpath.join("skills/pdf/SKILL.md").is_file());
+
+        // The root is the repository root with or without a subpath.
+        assert_eq!(
+            archive_root(tmp.path(), None),
+            tmp.path().join("skills-main")
+        );
+    }
+
+    #[test]
+    fn archive_root_strips_a_gitlab_wrapper() {
+        // GitLab appends the commit SHA: `{repo}-{ref}-{sha}`. Unwrapping does not
+        // depend on recognising that shape.
+        let tmp = tempfile::TempDir::new().unwrap();
+        touch(tmp.path(), "skills-main-1a2b3c/skills/pdf/SKILL.md");
+
+        assert_eq!(
+            archive_root(tmp.path(), Some("skills/pdf")),
+            tmp.path().join("skills-main-1a2b3c")
+        );
+    }
+
+    #[test]
+    fn archive_root_keeps_a_repository_own_root_dir() {
+        // An archive with no wrapper whose repository holds a single directory: the
+        // subpath resolves through that directory, so it must not be unwrapped.
+        let tmp = tempfile::TempDir::new().unwrap();
+        touch(tmp.path(), "pdf/SKILL.md");
+
+        let root = archive_root(tmp.path(), Some("pdf"));
+        assert_eq!(root, tmp.path());
+        assert!(root.join("pdf/SKILL.md").is_file());
+    }
+
+    #[test]
+    fn archive_root_unwraps_whatever_name_holds_the_subpath() {
+        // The single entry's name is irrelevant: only whether the subpath really
+        // lives inside it decides.
+        let tmp = tempfile::TempDir::new().unwrap();
+        touch(tmp.path(), "whatever/pdf/scripts/run.sh");
+
+        let root = archive_root(tmp.path(), Some("pdf/scripts"));
+        assert_eq!(root, tmp.path().join("whatever"));
+        assert!(root.join("pdf/scripts/run.sh").is_file());
+    }
+
+    #[test]
+    fn archive_root_ignores_a_multi_entry_root() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        touch(tmp.path(), "skills-main/SKILL.md");
+        touch(tmp.path(), "notes.md");
+
+        assert_eq!(archive_root(tmp.path(), None), tmp.path());
+    }
 
     #[test]
     fn clone_local_repo_via_file_url() {
