@@ -72,8 +72,8 @@ agents-skills remove --all    # 移除全部技能
 
 ## list
 
-列出已安装技能，附每个技能的描述与安装时间。各 agent 的链接状态用
-`agent --status` 查询。
+列出已安装技能，附每个技能的描述、安装时间与描述 token 估算量。各 agent 的链接
+状态用 `agent --status` 查询。
 
 ```
 agents-skills list [options]
@@ -88,24 +88,32 @@ agents-skills list
 agents-skills list --json
 ```
 
-每个技能打印两行 —— 名称与描述，随后是 `路径 [状态] · <本地安装时间>`：
+每个技能打印两行 —— 名称与描述，随后是
+`路径 [状态] ~N tokens · <本地安装时间>`；最后汇总已启用技能的常驻总量：
 
 ```
-Project Skills
+Skills
 
 docx Create and edit Word documents, including tables and headers.
-  .agents/skills/docx [enabled] · 2026-09-19 12:54
+  ~/.agents/skills/docx [enabled] ~16 tokens · 2026-09-19 12:54
+Enabled skills keep ~16 tokens of descriptions in context.
 ```
+
+token 数字衡量技能的常驻上下文成本：harness 会把每个已链接技能的名称与描述保留
+在上下文中，而 `SKILL.md` 正文只在技能触发时才加载。已禁用的技能不计入总量
+（它们停放在所有 agent 的视野之外）。该值是零依赖的启发式估算（约 4 个 ASCII
+字符或 1 个非 ASCII 字符算 1 token），应视为量级参考而非精确计数。
 
 `list --json` 每个技能输出相同字段：
 
-| 字段            | 说明                                        |
-| ------------- | ----------------------------------------- |
-| `name`        | 技能名（取自 `SKILL.md` frontmatter）            |
-| `description` | 技能描述，已规整为单行                               |
-| `path`        | 技能当前所在目录（规范目录，或 `disabled-skills`）        |
-| `enabled`     | `true` 在规范目录，`false` 停放在 `disabled-skills` |
-| `installedAt` | 技能目录的创建时间，Unix 秒（UTC）；无法获取时为 `null`       |
+| 字段              | 说明                                        |
+| --------------- | ----------------------------------------- |
+| `name`          | 技能名（取自 `SKILL.md` frontmatter）            |
+| `description`   | 技能描述，已规整为单行                               |
+| `estimatedTokens` | 描述在 agent 上下文中消耗的 token 估算量（见上）           |
+| `path`          | 技能当前所在目录（规范目录，或 `disabled-skills`）        |
+| `enabled`       | `true` 在规范目录，`false` 停放在 `disabled-skills` |
+| `installedAt`   | 技能目录的创建时间，Unix 秒（UTC）；无法获取时为 `null`       |
 
 `installedAt` 是"技能落到磁盘的时间"的近似值：`add` 安装是精确的，但从 agent
 目录并入的技能会保留该目录原本的创建时间，且对同名技能重新安装会刷新它；在

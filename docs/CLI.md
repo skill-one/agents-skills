@@ -76,8 +76,8 @@ agents-skills remove --all    # remove all skills
 
 ## list
 
-List installed skills with each skill's description and install time. Use
-`agent --status` for each agent's link status.
+List installed skills with each skill's description, install time, and estimated
+description token cost. Use `agent --status` for each agent's link status.
 
 ```
 agents-skills list [options]
@@ -93,24 +93,34 @@ agents-skills list --json
 ```
 
 Each skill is printed on two lines — name and description, then
-`path [status] · <local install time>`:
+`path [status] ~N tokens · <local install time>` — followed by the always-on
+total for enabled skills:
 
 ```
-Project Skills
+Skills
 
 docx Create and edit Word documents, including tables and headers.
-  .agents/skills/docx [enabled] · 2026-09-19 12:54
+  ~/.agents/skills/docx [enabled] ~16 tokens · 2026-09-19 12:54
+Enabled skills keep ~16 tokens of descriptions in context.
 ```
+
+The token figure sizes a skill's always-on context cost: harnesses keep every
+linked skill's name and description in context, while the `SKILL.md` body is
+only loaded once the skill triggers. Disabled skills are excluded from the
+total (they are parked outside every agent's view). It is a dependency-free
+heuristic (~4 ASCII characters, or 1 non-ASCII character, per token), so treat
+it as an order-of-magnitude figure rather than an exact count.
 
 `list --json` emits the same fields per skill:
 
-| Field         | Description                                                                    |
-| ------------- | ------------------------------------------------------------------------------ |
-| `name`        | Skill name (from `SKILL.md` frontmatter)                                       |
-| `description` | Skill description, collapsed onto a single line                                |
-| `path`        | Directory the skill currently lives in (canonical, or `disabled-skills`)       |
-| `enabled`     | `true` in the canonical directory, `false` parked in `disabled-skills`         |
-| `installedAt` | Skill directory creation time as Unix seconds (UTC), or `null` when unavailable |
+| Field             | Description                                                                    |
+| ----------------- | ------------------------------------------------------------------------------ |
+| `name`            | Skill name (from `SKILL.md` frontmatter)                                       |
+| `description`     | Skill description, collapsed onto a single line                                |
+| `estimatedTokens` | Estimated tokens the description costs in an agent's context (see above)       |
+| `path`            | Directory the skill currently lives in (canonical, or `disabled-skills`)       |
+| `enabled`         | `true` in the canonical directory, `false` parked in `disabled-skills`         |
+| `installedAt`     | Skill directory creation time as Unix seconds (UTC), or `null` when unavailable |
 
 `installedAt` approximates when the skill landed on disk: it is exact for `add`
 installs, but a skill adopted from an agent directory keeps that directory's

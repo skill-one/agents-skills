@@ -33,6 +33,7 @@ src/
 ├── core/               领域逻辑（纯函数、依赖可注入）
 │   ├── mod.rs          模块组织与重导出
 │   ├── source.rs       来源字符串解析
+│   ├── tokens.rs       技能描述的 token 开销估算
 │   ├── agents.rs       agent 表的声明式解释器(目录解析 + 安装检测)
 │   ├── agents.jsonl    agent 表:每个 agent 一行 JSON
 │   ├── discover.rs     SKILL.md 发现 + frontmatter 解析

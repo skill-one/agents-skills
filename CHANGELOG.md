@@ -40,6 +40,13 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 ### Added
 
+- feat(list): each skill now reports the estimated token cost of its
+  description — `estimatedTokens` in `list --json`, `~N tokens` per skill on the
+  plain output, plus an always-on total for enabled skills. A description is
+  what a harness keeps in context (the `SKILL.md` body only loads once the skill
+  triggers), so this makes an installed skill's standing cost visible. The
+  figure is a dependency-free heuristic (~4 ASCII characters, or 1 non-ASCII
+  character, per token), not an exact count.
 - feat(add): `GITHUB_TOKEN` is also sent to `raw.githubusercontent.com` and
   `media.githubusercontent.com`, so private repositories install too.
 - perf(add): files are fetched with a small thread pool (8 in parallel) instead

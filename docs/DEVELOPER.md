@@ -39,6 +39,7 @@ src/
 ├── core/               Domain logic (pure functions, injectable dependencies)
 │   ├── mod.rs          Module organization and re-exports
 │   ├── source.rs       Source-string parsing
+│   ├── tokens.rs       Token-cost estimation for skill descriptions
 │   ├── agents.rs       Declarative interpreter over the agent table (resolution + detection)
 │   ├── agents.jsonl    The agent table: one JSON object per agent line
 │   ├── discover.rs     SKILL.md discovery + frontmatter parsing

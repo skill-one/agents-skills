@@ -492,6 +492,7 @@ impl Manager {
             out.push(ListedSkill {
                 name: s.name,
                 description: s.description,
+                estimated_tokens: s.estimated_tokens,
                 path: s.canonical_path,
                 enabled: true,
                 installed_at: s.installed_at,
@@ -501,6 +502,7 @@ impl Manager {
             out.push(ListedSkill {
                 name: s.name,
                 description: s.description,
+                estimated_tokens: s.estimated_tokens,
                 path: s.canonical_path,
                 enabled: false,
                 installed_at: s.installed_at,

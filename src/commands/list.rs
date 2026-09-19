@@ -30,8 +30,20 @@ pub fn run(manager: &Manager, args: ListArgs) -> Result<()> {
     for skill in &listed {
         print_skill(skill, manager.env());
     }
+    print_context_cost(&listed);
     println!();
     Ok(())
+}
+
+/// Total description cost that linked agents keep in context: only enabled
+/// skills count — disabled ones are parked outside every agent's view.
+fn print_context_cost(listed: &[ListedSkill]) {
+    let active: Vec<&ListedSkill> = listed.iter().filter(|s| s.enabled).collect();
+    if active.is_empty() {
+        return;
+    }
+    let tokens: u32 = active.iter().map(|s| s.estimated_tokens).sum();
+    println!("{DIM}Enabled skills keep ~{tokens} tokens of descriptions in context.{RESET}");
 }
 
 fn print_skill(skill: &ListedSkill, env: &Env) {
@@ -50,8 +62,9 @@ fn print_skill(skill: &ListedSkill, env: &Env) {
         None => String::new(),
     };
     println!(
-        "  {DIM}{}{RESET} [{status}]{installed}",
-        shorten_path(&skill.path, env)
+        "  {DIM}{}{RESET} [{status}] {DIM}~{} tokens{RESET}{installed}",
+        shorten_path(&skill.path, env),
+        skill.estimated_tokens
     );
 }
 

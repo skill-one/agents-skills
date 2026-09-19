@@ -35,6 +35,11 @@
 
 ### 新增
 
+- feat(list)：现在为每个技能报告其描述消耗的 token 估算量——`list --json` 中为
+  `estimatedTokens`，纯文本输出每条显示 `~N tokens`，并汇总所有已启用技能常驻
+  上下文的总量。描述是 harness 常驻上下文的部分（`SKILL.md` 正文只在技能触发时
+  加载），因此这让已安装技能的固定成本变得可见。该数字用零依赖启发式估算（约 4 个
+  ASCII 字符或 1 个非 ASCII 字符算 1 token），不是精确计数。
 - feat(add)：`GITHUB_TOKEN` 现在也会发送给 `raw.githubusercontent.com` 与
   `media.githubusercontent.com`,因此私有仓库也能安装。
 - perf(add)：文件改为小线程池并发下载（8 路），不再是逐个请求；`--skill` /

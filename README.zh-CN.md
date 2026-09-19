@@ -57,7 +57,9 @@ agents-skills enable pdf                           # 重新启用（disable 的�
   （`private skills` / `other files`），即链接时会被并入的内容；
   已链接/规范目录的 agent 内容由 `list` 展示。
 - `list` 始终展示全部技能，含描述、路径、`enabled`/`disabled` 状态，以及近似的
-  安装时间（`--json` 中的 `installedAt`）。
+  安装时间（`--json` 中的 `installedAt`）。同时估算每条描述的 token 开销
+  （`--json` 中的 `estimatedTokens`），并汇总已启用技能的常驻总量——描述正是
+  harness 长期保留在上下文中的部分。
 
 ### 来源格式
 

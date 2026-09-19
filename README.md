@@ -63,7 +63,10 @@ agents-skills enable pdf                           # re-enable (inverse of disab
   skills directory (`private skills` / `other files`) — that is, what linking
   would adopt; content of linked/canonical agents is shown by `list`.
 - `list` always shows every skill with its description, path, `enabled`/`disabled`
-  status and an approximate install time (`installedAt` in `--json`).
+  status and an approximate install time (`installedAt` in `--json`). It also
+  estimates each description's token cost (`estimatedTokens` in `--json`) and
+  totals it for enabled skills — descriptions are the part harnesses keep in
+  context permanently.
 
 ### Source formats
 

@@ -71,10 +71,15 @@ fn main() -> agents_skills::Result<()> {
 ### 结果结构体字段
 
 [`Manager::list`] 返回 [`ListedSkill`]，即 `list --json` 序列化的精确形状：
-`name`、`description`（已规整为单行）、`path`（技能当前所在目录：规范目录或
-`disabled-skills`）、`enabled`、`installed_at`（Unix 秒，UTC；文件系统不记录
-创建时间时为 `None`）。`installed_at` 是"技能落到磁盘的时间"的近似值：`add`
-安装是精确的，但从 agent 目录并入的技能会保留该目录原本的创建时间。
+`name`、`description`（已规整为单行）、`estimated_tokens`（见下）、`path`
+（技能当前所在目录：规范目录或 `disabled-skills`）、`enabled`、`installed_at`
+（Unix 秒，UTC；文件系统不记录创建时间时为 `None`）。`installed_at` 是"技能落到
+磁盘的时间"的近似值：`add` 安装是精确的，但从 agent 目录并入的技能会保留该目录
+原本的创建时间。
+
+`estimated_tokens` 衡量技能的常驻上下文成本：harness 会把每个已链接技能的
+名称与描述保留在上下文中，而 `SKILL.md` 正文只在技能触发时才加载。该值是零依赖
+的启发式估算（约 4 个 ASCII 字符或 1 个非 ASCII 字符算 1 token），不是精确计数。
 
 [`Manager::add`] 返回 [`AddOutcome`]：`skills`（全部发现的技能）、`selected`、
 `installed`、`skipped`（同名已安装——`add` 绝不覆盖）、`failed`。
