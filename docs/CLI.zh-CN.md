@@ -121,41 +121,41 @@ agents-skills enable  --all    # 启用全部已禁用技能
 agents-skills agent [agents...] (--link | --unlink | --status) [options]
 ```
 
-| 选项                    | 说明                                   |
-| --------------------- | ------------------------------------ |
-| `-p, --project <dir>` | 操作指定项目目录的技能目录（默认全局）                  |
-| `--link`              | 把 agent 技能目录链接到规范目录（存量内容自动备份）        |
-| `--unlink`            | 解除 agent 与规范目录的链接，并恢复备份的内容           |
-| `--status`            | 查看链接状态（只读）                           |
-| `--migrate`           | 把存量技能迁入规范目录，含备份槽中暂存的技能（仅配合 `--link`） |
+| 选项                    | 说明                                |
+| --------------------- | --------------------------------- |
+| `-p, --project <dir>` | 操作指定项目目录的技能目录（默认全局）               |
+| `--link`              | 把 agent 技能目录链接到规范目录（存量内容自动并入）      |
+| `--unlink`            | 解除 agent 与规范目录的链接（已并入内容留在规范目录）     |
+| `--status`            | 查看链接状态（只读）                        |
 
 `--link`/`--unlink`/`--status` 互斥，须指定其一。`--status` 区分两种可见状态：
 原生读取规范目录的 agent（Codex、Cursor、Warp 等）标记 `(canonical dir)`，符号
 链接接入的标记 `(linked)`。对**未链接**的 agent，会分类列出其自身技能目录中的
 内容：`private skills: ...` 为技能（子目录及指向目录的符号链接），`other files: ...`
-为其他文件；若存在待恢复的备份，以 `backup parked at <路径> (<条目>) — unlink restores`
-显示。
+为其他文件，即链接时会被并入的内容。
 agent 默认为自动探测结果，`'*'` 表示全部。
 
-链接对已有内容的处理（从不销毁数据）：
+链接对已有内容的处理（并入是单向的，不可撤销）：
 
 - 目录为空：直接替换为链接。
 
-- 其他情况：整个技能目录原样移入备份槽 `.agents/backup-skills/<agent>/skills/`
-  （项目级在 `./.agents/backup-skills/`，全局级在 `~/.agents/backup-skills/`，槽内含
-  `manifest.json`），然后建立链接；`--unlink` 时用一次原子 rename 整体恢复。
+- 其他情况：先并入内容再建立链接 —— 技能目录移入规范目录，非技能条目移入规范
+  目录内的 `.misc/<agent>/`（点目录，不会被误判为已安装技能），随后 agent 目录
+  被链接替换。项目级还会写入 `.misc/.gitignore`，让被隔离的文件不进版本控制。
 
-- 加 `--migrate`：备份后把其中的技能目录移入规范目录；同名冲突保留规范目录
-  副本，已禁用（`disabled-skills`）的技能保持禁用（agent 侧副本留在备份）。
+- 同名冲突一律丢弃 agent 侧副本、保留已有副本：规范目录副本优先，已禁用
+  （`disabled-skills`）的技能保持禁用、不被重新导入；指向规范目录的旧模型
+  单技能符号链接同样丢弃（其内容已在规范目录）。
 
-- 仅两种情况拒绝：目录本身是指向别处的符号链接；上次链接的备份尚未恢复。
+- 已并入的内容**不会**在 `--unlink` 时归还；此后由 `remove`/`disable` 管理。
+
+- 仅一种情况拒绝：目录本身是指向别处的符号链接。
 
 ```bash
 agents-skills agent --link                       # 链接全部已安装 agent
-agents-skills agent --link claude-code           # 链接（存量内容自动备份）
-agents-skills agent --link claude-code --migrate # 链接并把存量技能迁入规范目录
+agents-skills agent --link claude-code           # 链接（存量内容自动并入）
 agents-skills agent --status                     # 查看链接状态
-agents-skills agent --unlink claude-code         # 解除指定 agent 链接并恢复备份
+agents-skills agent --unlink claude-code         # 解除指定 agent 链接
 ```
 
 ## 相关概念

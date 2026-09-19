@@ -7,6 +7,44 @@ the project adheres to [Semantic Versioning](https://semver.org/): while in
 
 For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## [0.15.0] — 2026-09-19
+
+### Removed
+
+- **(breaking)** The backup-slot mechanism and the `--migrate` flag. `agent
+  --link` now adopts a non-empty skills directory outright instead of parking it
+  under `.agents/backup-skills/<agent>/`: skill directories are moved into the
+  canonical dir, non-skill entries into `.misc/<agent>/` inside it (a dot-dir,
+  so install/discovery scans never mistake them for skills), and name clashes
+  are dropped in favour of the existing copy — the canonical copy wins, and a
+  name disabled in `disabled-skills` stays disabled rather than being
+  re-imported. Legacy per-skill symlinks into the canonical dir are dropped as
+  well, since moving them in would have made them self-referential. Linking is
+  therefore **one-way**: `agent --unlink` only disconnects the agent and
+  recreates an empty dir; adopted content stays in the canonical dir and is
+  managed by `remove`/`disable` from then on.
+
+- **(breaking)** Library API: `AgentRequest.migrate`,
+  `AgentStatus.pending_backup` and the `BackupStatus` type are gone.
+  `LinkOutcome::Migrated` is removed; `Linked` now carries
+  `adopted`/`quarantined`/`conflicts` instead of
+  `parked_skills`/`parked_others`/`backup_dir`, and `Unlinked` is a unit variant
+  (its `restored`/`restored_from` fields are gone).
+
+- **(breaking)** `agent --link` no longer refuses on a stale backup slot — that
+  state can no longer occur. Refusal is now reserved for an agent skills dir
+  that is a symlink pointing elsewhere.
+
+### Notes
+
+- Upgrading: a leftover `.agents/backup-skills/` directory is no longer read by
+  the tool. Content parked there by an earlier version is untouched on disk;
+  inspect and remove it manually.
+
+- In project scope the quarantine dir carries its own `.misc/.gitignore` so
+  quarantined files stay out of version control (the canonical dir itself is
+  normally committed).
+
 ## [0.14.0] — 2026-09-13
 
 ### Removed

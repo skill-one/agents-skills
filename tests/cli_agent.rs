@@ -37,49 +37,30 @@ fn agent_link_creates_relative_dir_symlink() {
 }
 
 #[test]
-fn agent_link_parks_content_and_migrate_adopts_it() {
+fn agent_link_adopts_existing_skills() {
     let p = TestProject::new();
     let existing = p.path().join(".claude/skills/my-skill");
     std::fs::create_dir_all(&existing).unwrap();
     std::fs::write(existing.join("SKILL.md"), "x").unwrap();
 
-    // Plain link parks the existing skill in the backup slot and links anyway.
+    // Linking adopts the existing skill into the canonical dir.
     p.skills()
         .args(["agent", "--link", "claude-code", "--project", "."])
         .assert()
         .success()
         .stdout(predicate::str::contains("linked"))
-        .stdout(predicate::str::contains("parked"));
-
-    let slot = p.path().join(".agents/backup-skills/claude-code");
-    assert!(slot.join("skills/my-skill/SKILL.md").exists());
-    assert!(p.path().join(".claude/skills").is_symlink());
-    assert!(!p.path().join(".agents/skills").exists());
-
-    // --migrate pulls the parked skill into the canonical dir.
-    p.skills()
-        .args([
-            "agent",
-            "--link",
-            "claude-code",
-            "--project",
-            ".",
-            "--migrate",
-        ])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("migrated"));
+        .stdout(predicate::str::contains(
+            "adopted into the canonical dir: my-skill",
+        ));
 
     p.assert_exists(".agents/skills/my-skill/SKILL.md");
     assert!(p.path().join(".claude/skills").is_symlink());
-    // The slot keeps only non-skill leftovers (none here), so it is gone.
-    assert!(!slot.exists());
 }
 
 #[test]
-fn agent_link_parks_stray_files_and_unlink_restores_them() {
+fn agent_link_quarantines_non_skill_files() {
     let p = TestProject::new();
-    // A real file is not a skill: it is parked (not migrated), and linking succeeds.
+    // A real file is not a skill: it is quarantined under .misc/, linking succeeds.
     std::fs::create_dir_all(p.path().join(".claude/skills")).unwrap();
     std::fs::write(p.path().join(".claude/skills/README.txt"), "x").unwrap();
 
@@ -87,25 +68,17 @@ fn agent_link_parks_stray_files_and_unlink_restores_them() {
         .args(["agent", "--link", "claude-code", "--project", "."])
         .assert()
         .success()
-        .stdout(predicate::str::contains("parked existing content"));
+        .stdout(predicate::str::contains("linked"))
+        .stdout(predicate::str::contains(
+            "moved non-skill files into .misc/: README.txt",
+        ));
 
     assert!(p.path().join(".claude/skills").is_symlink());
     assert!(
         p.path()
-            .join(".agents/backup-skills/claude-code/skills/README.txt")
+            .join(".agents/skills/.misc/claude-code/README.txt")
             .exists()
     );
-
-    // Unlink restores the parked file into a real dir.
-    p.skills()
-        .args(["agent", "--unlink", "claude-code", "--project", "."])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("restored README.txt"));
-
-    assert!(p.path().join(".claude/skills/README.txt").exists());
-    assert!(!p.path().join(".claude/skills").is_symlink());
-    assert!(!p.path().join(".agents/backup-skills/claude-code").exists());
 }
 
 #[test]
@@ -128,7 +101,7 @@ fn agent_unlink_restores_real_dir() {
 }
 
 #[test]
-fn agent_link_unlink_roundtrip_restores_parked_skills() {
+fn agent_link_unlink_roundtrip_keeps_adopted_skills() {
     let p = TestProject::new();
     let existing = p.path().join(".claude/skills/my-skill");
     std::fs::create_dir_all(&existing).unwrap();
@@ -145,12 +118,12 @@ fn agent_link_unlink_roundtrip_restores_parked_skills() {
         .assert()
         .success();
 
-    // The parked skill is back in a real dir; the backup slot is gone.
+    // The adopted skill stays in the canonical dir; the agent dir is empty again.
+    p.assert_exists(".agents/skills/my-skill/SKILL.md");
     let dir = p.path().join(".claude/skills");
     assert!(dir.is_dir());
     assert!(!dir.is_symlink());
-    assert!(dir.join("my-skill/SKILL.md").exists());
-    assert!(!p.path().join(".agents/backup-skills/claude-code").exists());
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
 }
 
 #[test]
@@ -198,7 +171,7 @@ fn agent_status_classifies_unlinked_agents_private_content() {
 }
 
 #[test]
-fn agent_status_shows_pending_backup_slot() {
+fn agent_status_reports_manually_unlinked_agent() {
     let p = TestProject::new();
     let existing = p.path().join(".claude/skills/my-skill");
     std::fs::create_dir_all(&existing).unwrap();
@@ -209,8 +182,7 @@ fn agent_status_shows_pending_backup_slot() {
         .assert()
         .success();
 
-    // The agent is linked now; remove the link manually to simulate a
-    // half-disconnected state — the parked slot must stay visible in status.
+    // Remove the link manually: status must fall back to "not linked".
     std::fs::remove_file(p.path().join(".claude/skills")).unwrap();
 
     p.skills()
@@ -219,9 +191,7 @@ fn agent_status_shows_pending_backup_slot() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Claude Code"))
-        .stdout(predicate::str::contains("not linked"))
-        .stdout(predicate::str::contains("backup parked at"))
-        .stdout(predicate::str::contains("my-skill"));
+        .stdout(predicate::str::contains("not linked"));
 }
 
 #[test]
@@ -300,25 +270,11 @@ fn agent_global_link_connects_project_universal_agent_vendor_dir() {
 }
 
 #[test]
-fn agent_status_conflicts_with_unlink_and_migrate() {
+fn agent_status_conflicts_with_unlink() {
     let p = TestProject::new();
 
     p.skills()
         .args(["agent", "--status", "--unlink"])
-        .assert()
-        .failure()
-        .code(1)
-        .stderr(predicate::str::contains("error"));
-
-    p.skills()
-        .args(["agent", "--status", "--migrate"])
-        .assert()
-        .failure()
-        .code(1)
-        .stderr(predicate::str::contains("error"));
-
-    p.skills()
-        .args(["agent", "--unlink", "--migrate"])
         .assert()
         .failure()
         .code(1)

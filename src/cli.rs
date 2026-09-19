@@ -132,10 +132,6 @@ pub struct AgentArgs {
     /// Show link status of installed agents (does not modify anything)
     #[arg(long = "status")]
     pub status: bool,
-    /// Move existing skills into the canonical dir when linking (also pulls
-    /// skills parked in a previous link's backup; only with --link)
-    #[arg(long = "migrate", conflicts_with_all = ["status", "unlink"])]
-    pub migrate: bool,
 }
 
 // ============================================================================

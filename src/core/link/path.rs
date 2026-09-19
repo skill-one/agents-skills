@@ -1,8 +1,8 @@
 //! Pure path and classification helpers for agent linking.
 //!
 //! `classify` decides which entries of an agent skills dir are skills vs. other
-//! files (the rules link, migrate and `agent --status` share); the rest are
-//! symlink / path comparison utilities. No backup-side effects live here.
+//! files (the rules linking and `agent --status` share); the rest are
+//! symlink / path comparison utilities. No filesystem mutation lives here.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -62,7 +62,10 @@ fn normalize_lexical(p: &Path) -> PathBuf {
 }
 
 /// Whether a dir entry is an old-model per-skill symlink into the canonical dir.
-fn is_legacy_link(entry: &fs::DirEntry, canonical: &Path) -> bool {
+///
+/// Such entries are dropped on link instead of being moved: their content already
+/// lives in the canonical dir, and moving the link in would make it point at itself.
+pub(crate) fn is_legacy_link(entry: &fs::DirEntry, canonical: &Path) -> bool {
     let path = entry.path();
     let is_symlink = fs::symlink_metadata(&path)
         .map(|m| m.file_type().is_symlink())

@@ -205,8 +205,8 @@ fn lib_agent_status_reports_internal_skills_for_unlinked_agents() {
     std::fs::create_dir_all(&home).unwrap();
     std::fs::create_dir_all(&cwd).unwrap();
 
-    // trae is detected via ~/.trae and not linked; it holds an internal skill
-    // and a stray file (classified the same way link/migrate classify).
+    // trae is detected via ~/.trae and not linked; it holds a skill and a stray
+    // file (classified the same way linking classifies them).
     std::fs::create_dir_all(home.join(".trae/skills/docx")).unwrap();
     std::fs::write(
         home.join(".trae/skills/docx/SKILL.md"),
@@ -227,18 +227,17 @@ fn lib_agent_status_reports_internal_skills_for_unlinked_agents() {
     assert!(!trae.linked);
     assert_eq!(trae.internal_skills, vec!["docx".to_string()]);
     assert_eq!(trae.internal_others, vec!["notes.txt".to_string()]);
-    assert!(trae.pending_backup.is_none());
 }
 
 #[test]
-fn lib_agent_link_parks_and_unlink_restores() {
+fn lib_agent_link_adopts_and_unlink_keeps_content() {
     let tmp = tempfile::TempDir::new().unwrap();
     let home = tmp.path().join("home");
     let cwd = tmp.path().join("project");
     std::fs::create_dir_all(&home).unwrap();
     std::fs::create_dir_all(&cwd).unwrap();
 
-    // trae is detected via ~/.trae; give it a pre-existing skill and a stray file.
+    // trae is detected via ~/.trae; give it a skill and a stray file.
     std::fs::create_dir_all(home.join(".trae/skills/docx")).unwrap();
     std::fs::write(
         home.join(".trae/skills/docx/SKILL.md"),
@@ -253,7 +252,7 @@ fn lib_agent_link_parks_and_unlink_restores() {
         .cwd(cwd.clone())
         .build();
 
-    // Plain link: content is parked in the backup slot, the dir becomes a link.
+    // Link: the skill is adopted, the stray file is quarantined, the dir becomes a link.
     let outcome = manager
         .agent(&AgentRequest {
             agents: vec!["trae".to_string()],
@@ -263,55 +262,42 @@ fn lib_agent_link_parks_and_unlink_restores() {
         .unwrap();
     match &outcome.results[0].outcome {
         LinkOutcome::Linked {
-            parked_skills,
-            parked_others,
-            backup_dir,
+            adopted,
+            quarantined,
+            conflicts,
         } => {
-            assert_eq!(parked_skills, &["docx".to_string()]);
-            assert_eq!(parked_others, &["README.txt".to_string()]);
-            assert_eq!(
-                backup_dir.as_deref(),
-                Some(home.join(".agents/backup-skills/trae/skills").as_path())
-            );
+            assert_eq!(adopted, &["docx".to_string()]);
+            assert_eq!(quarantined, &["README.txt".to_string()]);
+            assert!(conflicts.is_empty());
         }
         other => panic!("expected Linked, got {other:?}"),
     }
     assert!(home.join(".trae/skills").is_symlink());
+    assert!(home.join(".agents/skills/docx/SKILL.md").exists());
     assert!(
-        !home.join(".agents/skills").exists(),
-        "plain link never migrates"
+        home.join(".agents/skills/.misc/trae/README.txt").exists(),
+        "non-skill files are quarantined under .misc/"
     );
 
-    // Status reports the agent as linked; the slot only shows while unlinked.
+    // Status reports the agent as linked.
     let statuses = manager.agent_status(true);
     let trae = statuses.iter().find(|s| s.name == "trae").unwrap();
     assert!(trae.linked);
 
-    // Unlink restores the parked content into a real dir and drops the slot.
+    // Unlink recreates an empty real dir; adopted content stays canonical.
     let outcome = manager
         .agent(&AgentRequest {
             agents: vec!["trae".to_string()],
             global: true,
             unlink: true,
-            ..Default::default()
         })
         .unwrap();
-    match &outcome.results[0].outcome {
-        LinkOutcome::Unlinked {
-            restored,
-            restored_from,
-        } => {
-            assert_eq!(restored.len(), 2);
-            assert_eq!(
-                restored_from.as_deref(),
-                Some(home.join(".agents/backup-skills/trae/skills").as_path())
-            );
-        }
-        other => panic!("expected Unlinked, got {other:?}"),
-    }
-    assert!(home.join(".trae/skills/docx/SKILL.md").exists());
-    assert!(home.join(".trae/skills/README.txt").exists());
-    assert!(!home.join(".agents/backup-skills/trae").exists());
+    assert!(matches!(outcome.results[0].outcome, LinkOutcome::Unlinked));
+    assert!(home.join(".agents/skills/docx/SKILL.md").exists());
+    let dir = home.join(".trae/skills");
+    assert!(dir.is_dir());
+    assert!(!dir.is_symlink());
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
 }
 
 #[test]

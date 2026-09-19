@@ -24,7 +24,7 @@ fn main() -> agents_skills::Result<()> {
     println!("installed {} skill(s)", outcome.installed.len());
 
     // agent_status 列出每个 agent 的链接状态；未链接且自带内容的 agent
-    // 会分类暴露私有的技能与其他文件，以及待恢复的备份槽。
+    // 会分类暴露私有的技能与其他文件，即链接时会被并入规范目录的内容。
     for s in manager.agent_status(false) {
         println!("{}: linked={}", s.name, s.linked);
         if !s.internal_skills.is_empty() {
@@ -32,9 +32,6 @@ fn main() -> agents_skills::Result<()> {
         }
         if !s.internal_others.is_empty() {
             println!("  others: {}", s.internal_others.join(", "));
-        }
-        if let Some(b) = &s.pending_backup {
-            println!("  backup at {}: {}", b.path.display(), b.items.join(", "));
         }
     }
     Ok(())
@@ -61,7 +58,7 @@ fn main() -> agents_skills::Result<()> {
 | 结构体             | 字段（除 `global: bool` 外）                                                                                |
 | ------------------ | ----------------------------------------------------------------------------------------------------------- |
 | [`AddRequest`]     | `source: String`、`skills: Vec<String>`（`"*"` 或具体名，空 = 全部）、`list_only: bool`                     |
-| [`AgentRequest`]   | `agents: Vec<String>`、`unlink: bool`、`migrate: bool`                                                      |
+| [`AgentRequest`]   | `agents: Vec<String>`、`unlink: bool`                                                                       |
 | [`ListRequest`]    | —（作用域仅由 `global: bool` 决定）                                                                         |
 | [`RemoveRequest`]  | `skills: Vec<String>`、`all: bool`                                                                          |
 | [`DisableRequest`] | `skills: Vec<String>`、`all: bool`                                                                          |
@@ -82,12 +79,11 @@ fn main() -> agents_skills::Result<()> {
 - **`AgentRequest` 的 link 约定**：CLI 的 `agent` 命令 `--link`/`--unlink`/`--status`
   三选一互斥；库把 `--status` 拆为独立的 [`Manager::agent_status`]，因此
   [`AgentRequest`] 只需区分 link 与 unlink：`unlink: false`（默认）即 link，
-  `unlink: true` 即 unlink，`migrate: true` 仅在 link 时生效（对应 CLI
-  `--link --migrate`）。链接从不销毁已有内容：非空技能目录整体移入备份槽
-  `.agents/backup-skills/<agent>/skills/`，unlink 时一次 rename 恢复；`migrate: true`
-  把其中的技能移入规范目录（同名时规范目录副本优先；已禁用的技能保持禁用，
-  agent 侧副本留在备份槽）。仅当 agent 目录是指向别处的符号链接，或存在未恢复
-  的旧备份时报 [`LinkOutcome::Refused`]。
+  `unlink: true` 即 unlink。链接会把 agent 技能目录中的存量内容并入规范目录，
+  且是单向的：技能目录移入规范目录，非技能条目移入规范目录内的 `.misc/<agent>/`，
+  同名冲突一律丢弃 agent 侧副本、保留已有副本（规范目录优先；已禁用
+  `disabled-skills` 的技能保持禁用、不被重新导入）。unlink 不会把已并入内容移回。
+  仅当 agent 目录是指向别处的符号链接时报 [`LinkOutcome::Refused`]。
 
 ### 常见操作
 

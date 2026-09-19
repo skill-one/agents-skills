@@ -2,16 +2,16 @@
 //!
 //! Three modes, selected by a required flag — mirroring [`AgentRequest`] on the library side:
 //! - `--link`: connect agents' skills dirs via directory-level symlinks (existing
-//!   content is parked in a backup slot; `--migrate` moves skills into the canonical dir)
+//!   content is adopted into the canonical dir)
 //! - `--status`: show which agents are linked ([`Manager::agent_status`])
-//! - `--unlink`: disconnect agents' skills dirs and restore parked content
+//! - `--unlink`: disconnect agents' skills dirs (adopted content stays canonical)
 //!
 //! Renders outcomes; no business logic lives here.
 
 use crate::cli::{BOLD, DIM, GREEN, RESET, YELLOW};
-use crate::commands::{fail_agents, render_link_result, shorten_path};
+use crate::commands::{fail_agents, render_link_result};
 use agents_skills::error::Result;
-use agents_skills::{AgentOutcome, AgentRequest, LinkOutcome, Manager};
+use agents_skills::{AgentOutcome, AgentRequest, Manager};
 
 /// Run the `agent` command; `--status` reads only, `--unlink` disconnects, otherwise link.
 pub fn run(manager: &Manager, args: crate::cli::AgentArgs) -> Result<()> {
@@ -24,13 +24,12 @@ pub fn run(manager: &Manager, args: crate::cli::AgentArgs) -> Result<()> {
         agents: args.agents,
         global,
         unlink: args.unlink,
-        migrate: args.migrate,
     };
     let outcome = match manager.agent(&req) {
         Ok(o) => o,
         Err(e) => return fail_agents(e),
     };
-    render_link(&outcome, args.unlink, manager.env());
+    render_link(&outcome, args.unlink);
     Ok(())
 }
 
@@ -67,19 +66,12 @@ fn render_status(manager: &Manager, global: bool) {
                     s.internal_others.join(", ")
                 );
             }
-            if let Some(b) = &s.pending_backup {
-                println!(
-                    "      {DIM}backup parked at {} ({}) — unlink restores{RESET}",
-                    shorten_path(&b.path, manager.env()),
-                    b.items.join(", ")
-                );
-            }
         }
     }
     println!();
 }
 
-fn render_link(outcome: &AgentOutcome, unlink: bool, env: &agents_skills::Env) {
+fn render_link(outcome: &AgentOutcome, unlink: bool) {
     let scope = if outcome.global { "global" } else { "project" };
     if unlink {
         println!("{DIM}Unlinking agents from the {scope} canonical skills dir{RESET}");
@@ -88,26 +80,13 @@ fn render_link(outcome: &AgentOutcome, unlink: bool, env: &agents_skills::Env) {
     }
     println!();
     for r in &outcome.results {
-        render_link_result(r, env);
+        render_link_result(r);
     }
     if unlink {
         println!();
         println!(
-            "{DIM}Skills moved into the canonical dir stay there; use `remove` to delete them.{RESET}"
+            "{DIM}Skills adopted into the canonical dir stay there; use `remove` to delete them.{RESET}"
         );
-    } else {
-        // The --migrate hint only helps when parked content actually holds skills;
-        // slots with only non-skill files can't be migrated.
-        let needs_migrate = outcome.results.iter().any(|r| match &r.outcome {
-            LinkOutcome::Linked { parked_skills, .. } => !parked_skills.is_empty(),
-            _ => false,
-        });
-        if needs_migrate {
-            println!();
-            println!(
-                "{DIM}Parked skills can be moved into the canonical dir: rerun with --migrate.{RESET}"
-            );
-        }
     }
     println!();
 }

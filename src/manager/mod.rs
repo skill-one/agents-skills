@@ -15,9 +15,7 @@ use crate::core::install::{
     get_canonical_path, install_skill, list_disabled_skills, list_installed_skills, sanitize_name,
     scan_disabled, scan_installed,
 };
-use crate::core::link::{
-    is_agent_linked, link_agent, pending_backup, private_content, unlink_agent,
-};
+use crate::core::link::{is_agent_linked, link_agent, private_content, unlink_agent};
 use crate::core::source::{SourceType, parse_source};
 use crate::error::{Result, SkillsError};
 
@@ -25,7 +23,7 @@ use crate::manager::select::{
     resolve_target_agents, resolve_to_remove, set_enabled_state, skill_filters,
 };
 pub use crate::manager::types::{
-    AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus, BackupStatus,
+    AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus,
     DisableOutcome, DisableRequest, EnableOutcome, EnableRequest, InstallFailure, InstallSuccess,
     ListRequest, ListedSkill, RemoveOutcome, RemoveRequest,
 };
@@ -251,21 +249,22 @@ impl Manager {
     /// directory-level symlink, so every install/update/remove is immediately
     /// visible to all linked agents. With `req.unlink`, disconnects those dirs
     /// instead — removes the symlink (only when it points at the canonical dir)
-    /// and restores any parked backup content into a real dir; the canonical dir
-    /// and its skills are left untouched.
+    /// and recreates an empty dir; the canonical dir and its skills are left
+    /// untouched.
     ///
-    /// Pre-existing content is never destroyed. When linking, every entry of the
-    /// agent dir that does not go into the canonical dir is parked in a backup
-    /// slot (`<base>/.agents/backup-skills/<agent>`); unlink restores it. With
-    /// `req.migrate`, skill subdirs are moved into the canonical dir instead —
-    /// name clashes keep the canonical copy, and names disabled in the
-    /// `disabled-skills` dir stay disabled (the agent-side copy is parked,
-    /// reported via [`LinkOutcome::Migrated`] `skipped`) — and only non-skill
-    /// entries are parked. Rerunning with `migrate` on an already linked agent
-    /// pulls parked skills out of the backup slot. Legacy per-skill symlinks
-    /// pointing into the canonical dir are taken over automatically. Linking is
-    /// refused only when the agent dir is a foreign symlink or a stale non-empty
-    /// backup slot exists.
+    /// Linking *adopts* whatever the agent dir already holds, and that is not
+    /// reversible: skill dirs are moved into the canonical dir, non-skill entries
+    /// are quarantined under `.misc/<agent>/` inside it, and name clashes are
+    /// dropped in favour of the existing copy — the canonical copy wins, and a
+    /// name disabled in the `disabled-skills` dir stays disabled instead of being
+    /// re-imported (both reported via [`LinkOutcome::Linked`] `conflicts`). Legacy
+    /// per-skill symlinks pointing into the canonical dir are dropped as well,
+    /// since their content already lives there. Adopted content is managed by
+    /// [`Manager::remove`] / [`Manager::disable`] from then on; unlinking does not
+    /// move it back.
+    ///
+    /// Linking is refused only when the agent dir is a symlink pointing somewhere
+    /// other than the canonical dir.
     ///
     /// Agents native to the requested scope (whose skills dir already is that
     /// scope's canonical dir) report [`LinkOutcome::AlreadyLinked`]. Nativeness
@@ -292,7 +291,7 @@ impl Manager {
                 outcome: if req.unlink {
                     unlink_agent(agent, req.global, &self.env)
                 } else {
-                    link_agent(agent, req.global, &self.env, req.migrate)
+                    link_agent(agent, req.global, &self.env)
                 },
             })
             .collect();
@@ -311,9 +310,8 @@ impl Manager {
     /// scope but linked at global scope).
     ///
     /// For unlinked, non-canonical agents the status classifies the agent dir's
-    /// private content (`internal_skills` / `internal_others`, the same rules
-    /// link and migrate use) and reports a pending backup slot (`pending_backup`)
-    /// when one is waiting to be restored by unlink.
+    /// private content (`internal_skills` / `internal_others`) — what linking
+    /// would adopt into the canonical dir.
     ///
     /// Ordering: agents that natively use the canonical dir (`canonical: true`)
     /// come first, then the remaining agents — both groups keep the static agent
@@ -332,13 +330,10 @@ impl Manager {
                 // For unlinked, non-canonical agents, classify the private content
                 // of the agent's own skills dir (canonical/linked agents share the
                 // canonical dir, whose contents are shown by `list` instead).
-                let (internal_skills, internal_others, pending_backup) = if linked || canonical {
-                    (Vec::new(), Vec::new(), None)
+                let (internal_skills, internal_others) = if linked || canonical {
+                    (Vec::new(), Vec::new())
                 } else {
-                    let (skills, others) = private_content(a, global, &self.env);
-                    let backup = pending_backup(a, global, &self.env)
-                        .map(|(path, items)| BackupStatus { path, items });
-                    (skills, others, backup)
+                    private_content(a, global, &self.env)
                 };
                 AgentStatus {
                     name: a.name.to_string(),
@@ -347,7 +342,6 @@ impl Manager {
                     canonical,
                     internal_skills,
                     internal_others,
-                    pending_backup,
                 }
             })
             .collect();

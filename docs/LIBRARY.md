@@ -26,8 +26,8 @@ fn main() -> agents_skills::Result<()> {
     println!("installed {} skill(s)", outcome.installed.len());
 
     // agent_status lists each agent's link status; unlinked agents that carry
-    // their own content expose their private skills and other files, plus any
-    // backup slot waiting to be restored.
+    // their own content expose their private skills and other files — what
+    // linking would adopt into the canonical directory.
     for s in manager.agent_status(false) {
         println!("{}: linked={}", s.name, s.linked);
         if !s.internal_skills.is_empty() {
@@ -35,9 +35,6 @@ fn main() -> agents_skills::Result<()> {
         }
         if !s.internal_others.is_empty() {
             println!("  others: {}", s.internal_others.join(", "));
-        }
-        if let Some(b) = &s.pending_backup {
-            println!("  backup at {}: {}", b.path.display(), b.items.join(", "));
         }
     }
     Ok(())
@@ -65,7 +62,7 @@ overrides.
 | Struct             | Fields (besides `global: bool`)                                                                             |
 | ------------------ | ----------------------------------------------------------------------------------------------------------- |
 | [`AddRequest`]     | `source: String`, `skills: Vec<String>` (`"*"` or specific names, empty = all), `list_only: bool`           |
-| [`AgentRequest`]   | `agents: Vec<String>`, `unlink: bool`, `migrate: bool`                                                      |
+| [`AgentRequest`]   | `agents: Vec<String>`, `unlink: bool`                                                                       |
 | [`ListRequest`]    | — (scope only, via `global: bool`)                                                                          |
 | [`RemoveRequest`]  | `skills: Vec<String>`, `all: bool`                                                                          |
 | [`DisableRequest`] | `skills: Vec<String>`, `all: bool`                                                                          |
@@ -90,16 +87,14 @@ per-skill property.
   exactly one of `--link`/`--unlink`/`--status`; the library splits `--status`
   into the separate [`Manager::agent_status`], so [`AgentRequest`] only
   distinguishes link from unlink: `unlink: false` (default) links,
-  `unlink: true` unlinks, and `migrate: true` only takes effect when linking
-  (the CLI's `--link --migrate`). Linking never destroys existing content: a
-  non-empty skills directory is moved wholesale into the backup slot
-  `.agents/backup-skills/<agent>/skills/` and restored with a single rename on
-  unlink; `migrate: true` moves the skills inside into the canonical directory
-  (the canonical copy wins on name conflicts; skills disabled in
-  `disabled-skills` stay disabled, their agent-side copies stay parked).
-  [`LinkOutcome::Refused`] is
-  returned only when the agent directory is a symlink pointing elsewhere, or
-  when an unrestored old backup exists.
+  `unlink: true` unlinks. Linking *adopts* whatever the agent's skills
+  directory already holds, and that is one-way: skill directories are moved
+  into the canonical directory, non-skill entries into `.misc/<agent>/` inside
+  it, and name clashes are dropped in favour of the existing copy (the
+  canonical copy wins; a skill disabled in `disabled-skills` stays disabled
+  rather than being re-imported). Unlinking does not move adopted content back.
+  [`LinkOutcome::Refused`] is returned only when the agent directory is a
+  symlink pointing elsewhere.
 
 ### Common operations
 

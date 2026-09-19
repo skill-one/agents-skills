@@ -130,13 +130,12 @@ directory.
 agents-skills agent [agents...] (--link | --unlink | --status) [options]
 ```
 
-| Option                | Description                                                                                                              |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `-p, --project <dir>` | Operate on the skills directory under the given project directory (default: global)                                      |
-| `--link`              | Link the agent's skills directory to the canonical directory (pre-existing content is backed up automatically)           |
-| `--unlink`            | Unlink the agent from the canonical directory and restore the backed-up content                                          |
-| `--status`            | Show link status (read-only)                                                                                             |
-| `--migrate`           | Migrate pre-existing skills into the canonical directory, including those parked in the backup slot (only with `--link`) |
+| Option                | Description                                                                                    |
+| --------------------- | ---------------------------------------------------------------------------------------------- |
+| `-p, --project <dir>` | Operate on the skills directory under the given project directory (default: global)             |
+| `--link`              | Link the agent's skills directory to the canonical directory (pre-existing content is adopted)  |
+| `--unlink`            | Unlink the agent from the canonical directory (adopted content stays in the canonical dir)      |
+| `--status`            | Show link status (read-only)                                                                    |
 
 `--link`, `--unlink`, and `--status` are mutually exclusive; exactly one must
 be given. `--status` distinguishes two kinds of visibility: agents that read
@@ -144,35 +143,37 @@ the canonical directory natively (Codex, Cursor, Warp, ...) are tagged
 `(canonical dir)`, while those wired in through a symlink are tagged
 `(linked)`. For **unlinked** agents, it categorizes the contents of their own
 skills directory: `private skills: ...` are skills (subdirectories and
-symlinks pointing to directories), `other files: ...` are other files; if a
-backup is waiting to be restored, it is shown as
-`backup parked at <path> (<items>) — unlink restores`.
-Agents default to the auto-detected set; `'*'` means all.
+symlinks pointing to directories), `other files: ...` are other files — that
+is, what linking would adopt. Agents default to the auto-detected set; `'*'`
+means all.
 
-How linking handles pre-existing content (data is never destroyed):
+How linking handles pre-existing content (adoption is one-way):
 
 - Empty directory: replaced by the link directly.
 
-- Otherwise: the whole skills directory is moved as-is into the backup slot
-  `.agents/backup-skills/<agent>/skills/` (project-level under
-  `./.agents/backup-skills/`, global under `~/.agents/backup-skills/`; the slot
-  contains a `manifest.json`), then the link is created; `--unlink` restores
-  everything with a single atomic rename.
+- Otherwise the contents are adopted before the link is created: skill
+  directories are moved into the canonical directory, non-skill entries are
+  moved into `.misc/<agent>/` inside it (a dot-dir, so they are never mistaken
+  for installed skills), and only then is the agent directory replaced by the
+  link. In project scope a `.misc/.gitignore` keeps quarantined files out of
+  version control.
 
-- With `--migrate`: after the backup, the skill directories inside are moved
-  into the canonical directory; on name conflicts the canonical copy wins, and
-  skills disabled in `disabled-skills` stay disabled (the agent-side copy stays
-  in the backup).
+- Name clashes are dropped in favour of the existing copy: the canonical copy
+  wins, and a name disabled in `disabled-skills` stays disabled instead of
+  being re-imported. Legacy per-skill symlinks pointing into the canonical
+  directory are dropped as well — their content already lives there.
 
-- Refused in only two cases: the directory itself is a symlink pointing
-  elsewhere; or the backup from the previous link has not been restored yet.
+- Adopted content is *not* restored by `--unlink`; it is managed by
+  `remove`/`disable` from then on.
+
+- Refused in only one case: the directory itself is a symlink pointing
+  elsewhere.
 
 ```bash
 agents-skills agent --link                       # link all installed agents
-agents-skills agent --link claude-code           # link (pre-existing content is backed up automatically)
-agents-skills agent --link claude-code --migrate # link and migrate pre-existing skills into the canonical directory
+agents-skills agent --link claude-code           # link (pre-existing content is adopted)
 agents-skills agent --status                     # show link status
-agents-skills agent --unlink claude-code         # unlink the specified agent and restore its backup
+agents-skills agent --unlink claude-code         # unlink the specified agent
 ```
 
 ## Related concepts

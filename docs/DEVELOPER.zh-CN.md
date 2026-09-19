@@ -39,9 +39,8 @@ src/
 │   ├── fetch.rs        git 克隆 / HTTP 下载 / 归档解包
 │   ├── github.rs       GitHub API 单技能快速拉取
 │   ├── install.rs      安装技能到规范目录 + 已装清单
-│   ├── link/           目录级 agent 链接（link/unlink/migrate）
-│   │   ├── mod.rs      链接编排 + 公开入口
-│   │   ├── backup.rs   备份槽：停车/恢复 + 迁移既有目录
+│   ├── link/           目录级 agent 链接（link/unlink）
+│   │   ├── mod.rs      链接编排 + 存量内容并入
 │   │   ├── outcome.rs  LinkOutcome 结果枚举
 │   │   ├── path.rs     路径分类辅助函数
 │   │   └── tests.rs    链接机制的单元测试

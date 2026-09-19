@@ -6,14 +6,15 @@
 //! at the canonical dir, so every install/remove is instantly visible to all
 //! linked agents.
 //!
-//! Pre-existing content is never destroyed. A non-empty skills dir is parked
-//! whole into the agent's backup slot (see `backup`); unlink restores it. The
-//! public result enum lives in `outcome`, path/classification helpers in `path`,
-//! and the unit tests in `tests`.
+//! Linking adopts whatever the agent dir already holds: skill dirs are moved into
+//! the canonical dir, non-skill entries are quarantined under
+//! `.misc/<agent>/` inside it, and name clashes are dropped in favour of the
+//! existing canonical (or disabled) copy. Adopted content is *not* restored by
+//! unlink — it is managed by `remove`/`disable` from then on. The public result
+//! enum lives in `outcome`, and path/classification helpers in `path`.
 
 pub use crate::core::link::outcome::LinkOutcome;
 
-mod backup;
 mod outcome;
 mod path;
 #[cfg(test)]
@@ -25,11 +26,14 @@ use std::path::{Path, PathBuf};
 use crate::core::agents::{
     Agent, Env, agent_skills_dir, canonical_skills_dir, disabled_skills_dir, is_native,
 };
-use crate::core::link::backup::{
-    PARKED_DIR_NAME, adopt_skills, backup_slot, cleanup_slot, migrate_from_backup, park_dir,
-    parked_entries, restore_backup, rewrite_manifest,
-};
-use crate::core::link::path::{agent_root_exists, classify, entry_name, points_to};
+use crate::core::install::sanitize_name;
+use crate::core::link::path::{agent_root_exists, classify, entry_name, is_legacy_link, points_to};
+
+/// Name of the quarantine dir for non-skill entries, inside the canonical dir.
+///
+/// The leading dot keeps it out of the skill namespace: install/discovery scans
+/// skip dot-dirs, so quarantined files are never mistaken for installed skills.
+pub(crate) const MISC_DIR_NAME: &str = ".misc";
 
 /// Whether an agent's skills dir is linked to the canonical dir in the given
 /// scope (a scope-native agent reads the canonical dir directly = always).
@@ -57,13 +61,12 @@ pub fn is_agent_linked(agent: &Agent, global: bool, env: &Env) -> bool {
 /// `claude-code` is the historical exception: it is linked at project level even
 /// when `.claude/` does not exist yet.
 ///
-/// Content handling: an empty dir is replaced by the link directly; any non-empty
-/// dir is parked whole into the agent's backup slot (one atomic rename) before
-/// linking. With `migrate`, skill dirs are then adopted into the canonical dir
-/// (name clashes keep the canonical copy; names disabled in the
-/// `disabled-skills` dir stay disabled). Refusal is reserved for a foreign
-/// symlink or a previous backup that is still parked.
-pub fn link_agent(agent: &Agent, global: bool, env: &Env, migrate: bool) -> LinkOutcome {
+/// Content handling: an empty dir is replaced by the link directly; a non-empty
+/// dir is adopted whole before linking — skill dirs move into the canonical dir,
+/// non-skill entries into `.misc/<agent>/` inside it. Name clashes are dropped
+/// (the canonical copy wins; a name disabled in `disabled-skills` stays disabled
+/// and is not re-imported). Refusal is reserved for a foreign symlink.
+pub fn link_agent(agent: &Agent, global: bool, env: &Env) -> LinkOutcome {
     // Scope-native agents use the canonical dir directly — nothing to link.
     // Note: an agent universal at project scope (e.g. Antigravity) may still
     // have a vendor-specific global dir that needs a real symlink.
@@ -85,29 +88,21 @@ pub fn link_agent(agent: &Agent, global: bool, env: &Env, migrate: bool) -> Link
 
     match fs::symlink_metadata(&agent_dir) {
         // Missing: create the parent chain + a relative symlink.
-        Err(_) => map_link(
-            create_dir_symlink(&canonical, &agent_dir),
-            Vec::new(),
-            Vec::new(),
-            None,
-        ),
+        Err(_) => link_dir(&canonical, &agent_dir),
+
         Ok(meta) if meta.file_type().is_symlink() => {
-            if !points_to(&agent_dir, &canonical) {
-                return LinkOutcome::Refused {
+            if points_to(&agent_dir, &canonical) {
+                LinkOutcome::AlreadyLinked
+            } else {
+                LinkOutcome::Refused {
                     reason: format!(
                         "{} is a symlink pointing elsewhere; remove it first",
                         agent_dir.display()
                     ),
-                };
-            }
-            // Already linked. With --migrate, pull parked skills out of the
-            // backup slot into the canonical dir.
-            if migrate {
-                migrate_from_backup(agent, global, env, &canonical)
-            } else {
-                LinkOutcome::AlreadyLinked
+                }
             }
         }
+
         Ok(_) => {
             let entries = match fs::read_dir(&agent_dir) {
                 Err(e) => {
@@ -120,85 +115,45 @@ pub fn link_agent(agent: &Agent, global: bool, env: &Env, migrate: bool) -> Link
             if entries.is_empty() {
                 // Empty dir: safe to replace with the link.
                 let _ = fs::remove_dir(&agent_dir);
-                return map_link(
-                    create_dir_symlink(&canonical, &agent_dir),
-                    Vec::new(),
-                    Vec::new(),
-                    None,
-                );
+                return link_dir(&canonical, &agent_dir);
             }
 
-            // Classification is for reporting and migrate decisions only — the
-            // whole dir is parked either way.
-            let (skills, others) = classify(&entries, &canonical);
-            let names: Vec<String> = entries.iter().map(entry_name).collect();
-            let slot = backup_slot(agent, global, env);
-            let parked = slot.join(PARKED_DIR_NAME);
-            if !parked_entries(&parked).is_empty() {
-                return LinkOutcome::Refused {
-                    reason: format!(
-                        "a previous backup is still parked at {}; move it away or remove it before linking {}",
-                        parked.display(),
-                        agent_dir.display()
-                    ),
-                };
-            }
-
-            if let Some(failed) = park_dir(agent, global, env, &agent_dir, &names, &[]) {
-                return failed;
-            }
-            let (moved, skipped) = if migrate {
-                match adopt_skills(
-                    &canonical,
-                    &disabled_skills_dir(global, env),
-                    &parked,
-                    &skills,
-                ) {
-                    Ok(pair) => pair,
-                    Err(error) => return LinkOutcome::Failed { error },
-                }
-            } else {
-                (Vec::new(), Vec::new())
+            let (adopted, quarantined, conflicts) = match adopt_all(
+                agent,
+                global,
+                &canonical,
+                &disabled_skills_dir(global, env),
+                &entries,
+            ) {
+                Ok(triple) => triple,
+                Err(error) => return LinkOutcome::Failed { error },
             };
 
-            let res = create_dir_symlink(&canonical, &agent_dir);
-            if migrate {
-                let remaining: Vec<String> = names
-                    .iter()
-                    .filter(|n| !moved.contains(n))
-                    .cloned()
-                    .collect();
-                let backup_dir = if remaining.is_empty() {
-                    cleanup_slot(&slot);
-                    None
-                } else {
-                    rewrite_manifest(&slot, agent, global, &moved, &remaining);
-                    Some(parked)
+            // What is left behind is legacy per-skill links only — links into the
+            // canonical dir, whose content already lives there.
+            if let Err(e) = fs::remove_dir_all(&agent_dir) {
+                return LinkOutcome::Failed {
+                    error: format!("remove {}: {e}", agent_dir.display()),
                 };
-                match res {
-                    Ok(()) => {
-                        return LinkOutcome::Migrated {
-                            moved,
-                            skipped,
-                            parked_others: others,
-                            backup_dir,
-                        };
-                    }
-                    Err(error) => return LinkOutcome::Failed { error },
-                }
             }
-            map_link(res, skills, others, Some(parked))
+            match create_dir_symlink(&canonical, &agent_dir) {
+                Ok(()) => LinkOutcome::Linked {
+                    adopted,
+                    quarantined,
+                    conflicts,
+                },
+                Err(error) => LinkOutcome::Failed { error },
+            }
         }
     }
 }
 
-/// Unlink an agent's skills dir from the canonical dir, restoring the parked
-/// dir (if any) with a single rename into its place.
+/// Unlink an agent's skills dir from the canonical dir.
 ///
 /// Returns a [`LinkOutcome`]: [`LinkOutcome::Unlinked`] on success,
-/// [`LinkOutcome::NotLinked`] when there is nothing to do. A real skills dir is
-/// replaced only when a backup is pending and it is empty (or the restore fails
-/// with a clear error); foreign symlinks are left alone.
+/// [`LinkOutcome::NotLinked`] when there is nothing to do. Skills adopted on link
+/// stay in the canonical dir; the agent dir is recreated empty. Foreign symlinks
+/// and real dirs are left alone.
 pub fn unlink_agent(agent: &Agent, global: bool, env: &Env) -> LinkOutcome {
     // Scope-native agents use the canonical dir directly — nothing to unlink.
     if is_native(agent, global, env) {
@@ -209,18 +164,8 @@ pub fn unlink_agent(agent: &Agent, global: bool, env: &Env) -> LinkOutcome {
         return LinkOutcome::NotLinked;
     };
     let canonical = canonical_skills_dir(global, env);
-    let slot = backup_slot(agent, global, env);
-    let pending = !parked_entries(&slot.join(PARKED_DIR_NAME)).is_empty();
 
     match fs::symlink_metadata(&agent_dir) {
-        // Dir gone: restore only when a backup is pending.
-        Err(_) => {
-            if pending {
-                restore_backup(&slot, &agent_dir)
-            } else {
-                LinkOutcome::NotLinked
-            }
-        }
         Ok(meta) if meta.file_type().is_symlink() => {
             if !points_to(&agent_dir, &canonical) {
                 // A foreign symlink: leave it alone.
@@ -231,20 +176,20 @@ pub fn unlink_agent(agent: &Agent, global: bool, env: &Env) -> LinkOutcome {
                     error: e.to_string(),
                 };
             }
-            restore_backup(&slot, &agent_dir)
-        }
-        Ok(_) => {
-            if pending {
-                restore_backup(&slot, &agent_dir)
-            } else {
-                LinkOutcome::NotLinked
+            // Recreate an empty dir so the agent does not see a missing skills dir.
+            if let Err(e) = fs::create_dir_all(&agent_dir) {
+                return LinkOutcome::Failed {
+                    error: e.to_string(),
+                };
             }
+            LinkOutcome::Unlinked
         }
+        _ => LinkOutcome::NotLinked,
     }
 }
 
 /// Classify the private content of an unlinked agent's skills dir:
-/// `(skills, other entries)`, using the same rules as migrate.
+/// `(skills, other entries)`, for `agent --status` reporting.
 pub fn private_content(agent: &Agent, global: bool, env: &Env) -> (Vec<String>, Vec<String>) {
     let Some(dir) = agent_skills_dir(agent, global, env) else {
         return (Vec::new(), Vec::new());
@@ -266,29 +211,95 @@ pub fn private_content(agent: &Agent, global: bool, env: &Env) -> (Vec<String>, 
     classify(&entries, &canonical_skills_dir(global, env))
 }
 
-/// The agent's parked dir with content, if any (for `--status`).
-pub fn pending_backup(agent: &Agent, global: bool, env: &Env) -> Option<(PathBuf, Vec<String>)> {
-    let parked = backup_slot(agent, global, env).join(PARKED_DIR_NAME);
-    let entries = parked_entries(&parked);
-    if entries.is_empty() {
-        return None;
+/// `(adopted, quarantined, conflicts)` — the names moved into the canonical dir,
+/// the non-skill names moved into `.misc/<agent>/`, and the names dropped.
+type AdoptOutcome = (Vec<String>, Vec<String>, Vec<String>);
+
+/// Move every entry of `agent_dir` into the canonical dir: skill dirs go to the
+/// canonical root, non-skill entries into `.misc/<agent>/`. Name clashes are
+/// dropped (an existing canonical or disabled copy wins), and legacy per-skill
+/// links into the canonical dir are dropped outright.
+///
+/// Returns [`AdoptOutcome`].
+fn adopt_all(
+    agent: &Agent,
+    global: bool,
+    canonical: &Path,
+    disabled: &Path,
+    entries: &[fs::DirEntry],
+) -> Result<AdoptOutcome, String> {
+    let mut adopted = Vec::new();
+    let mut quarantined = Vec::new();
+    let mut conflicts = Vec::new();
+    fs::create_dir_all(canonical).map_err(|e| format!("create {}: {e}", canonical.display()))?;
+
+    // Created on first non-skill entry, so a clean dir never gains an empty `.misc`.
+    let mut misc: Option<PathBuf> = None;
+
+    for entry in entries {
+        let name = entry_name(entry);
+        let from = entry.path();
+
+        // A legacy per-skill link already resolves into the canonical dir: its
+        // content lives there, and moving the link in would make it self-referential.
+        if is_legacy_link(entry, canonical) {
+            conflicts.push(name);
+            continue;
+        }
+
+        if fs::metadata(&from).map(|m| m.is_dir()).unwrap_or(false) {
+            if canonical.join(&name).exists()
+                || disabled.join(&name).exists()
+                || disabled.join(sanitize_name(&name)).exists()
+            {
+                conflicts.push(name);
+                continue;
+            }
+            let to = canonical.join(&name);
+            fs::rename(&from, &to).map_err(|e| format!("move {}: {e}", from.display()))?;
+            adopted.push(name);
+        } else {
+            let dir = match &misc {
+                Some(dir) => dir.clone(),
+                None => {
+                    let root = canonical.join(MISC_DIR_NAME);
+                    let dir = root.join(&agent.name);
+                    fs::create_dir_all(&dir)
+                        .map_err(|e| format!("create {}: {e}", dir.display()))?;
+                    ensure_misc_gitignore(global, &root);
+                    misc = Some(dir.clone());
+                    dir
+                }
+            };
+            let to = dir.join(&name);
+            fs::rename(&from, &to).map_err(|e| format!("move {}: {e}", from.display()))?;
+            quarantined.push(name);
+        }
     }
-    let items = entries.iter().map(entry_name).collect();
-    Some((parked, items))
+    Ok((adopted, quarantined, conflicts))
 }
 
-/// Map a symlink-creation result to a `Linked`/`Failed` outcome.
-fn map_link(
-    res: Result<(), String>,
-    parked_skills: Vec<String>,
-    parked_others: Vec<String>,
-    backup_dir: Option<PathBuf>,
-) -> LinkOutcome {
-    match res {
+/// Keep the quarantine dir out of version control in project scope: the canonical
+/// dir itself is normally committed, but quarantined files are not skills.
+fn ensure_misc_gitignore(global: bool, misc_root: &Path) {
+    if global {
+        return;
+    }
+    let gitignore = misc_root.join(".gitignore");
+    if !gitignore.exists()
+        && let Err(e) = fs::write(&gitignore, "*\n!.gitignore\n")
+    {
+        debug_assert!(false, "write {}: {e}", gitignore.display());
+    }
+}
+
+/// Create the canonical symlink for an agent dir that is missing or empty.
+fn link_dir(canonical: &Path, agent_dir: &Path) -> LinkOutcome {
+    match create_dir_symlink(canonical, agent_dir) {
         Ok(()) => LinkOutcome::Linked {
-            parked_skills,
-            parked_others,
-            backup_dir,
+            adopted: Vec::new(),
+            quarantined: Vec::new(),
+            conflicts: Vec::new(),
         },
         Err(error) => LinkOutcome::Failed { error },
     }

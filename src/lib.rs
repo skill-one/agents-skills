@@ -41,7 +41,7 @@ pub mod manager;
 
 // High-level facade.
 pub use manager::{
-    AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus, BackupStatus,
+    AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus,
     DisableOutcome, DisableRequest, EnableOutcome, EnableRequest, InstallFailure, InstallSuccess,
     ListRequest, ListedSkill, Manager, ManagerBuilder, RemoveOutcome, RemoveRequest,
 };

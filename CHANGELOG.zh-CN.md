@@ -7,6 +7,36 @@
 
 英文版见 [CHANGELOG.md](CHANGELOG.md)。
 
+## [0.15.0] — 2026-09-19
+
+### 移除
+
+- **(breaking)** 移除备份槽机制与 `--migrate` 旗标。`agent --link` 现在直接并入
+  非空的技能目录，不再把它停放在 `.agents/backup-skills/<agent>/` 下：技能目录
+  移入规范目录，非技能条目移入规范目录内的 `.misc/<agent>/`（点目录，安装/发现
+  扫描不会把它误判为技能），同名冲突一律丢弃 agent 侧副本、保留已有副本——规范
+  目录优先，已禁用（`disabled-skills`）的名字保持禁用、不被重新导入。指向规范
+  目录的旧模型单技能符号链接同样丢弃，因为移入后它会变成自引用链接。因此链接是
+  **单向**的：`agent --unlink` 只断开链接并重建空目录，已并入的内容留在规范目录，
+  此后由 `remove`/`disable` 管理。
+
+- **(breaking)** 库 API：移除 `AgentRequest.migrate`、`AgentStatus.pending_backup`
+  与 `BackupStatus` 类型。`LinkOutcome::Migrated` 变体删除；`Linked` 的字段由
+  `parked_skills`/`parked_others`/`backup_dir` 改为
+  `adopted`/`quarantined`/`conflicts`；`Unlinked` 变为无字段变体（原
+  `restored`/`restored_from` 字段删除）。
+
+- **(breaking)** `agent --link` 不再因"存在未恢复的旧备份槽"而拒绝——该状态已不
+  可能发生。拒绝现在仅保留一种情况：agent 技能目录是指向别处的符号链接。
+
+### 说明
+
+- 升级提示：遗留的 `.agents/backup-skills/` 目录已不再被读取。旧版本停放在其中的
+  内容仍原样保留在磁盘上，请自行检查并清理。
+
+- 项目级下隔离目录自带 `.misc/.gitignore`，让被隔离的文件不进版本控制（规范目录
+  本身通常是需要提交的）。
+
 ## [0.14.0] — 2026-09-13
 
 ### 移除

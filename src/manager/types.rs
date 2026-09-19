@@ -90,9 +90,6 @@ pub struct AgentRequest {
     pub global: bool,
     /// Unlink (disconnect) the agents' skills dirs instead of linking them.
     pub unlink: bool,
-    /// Move existing skills into the canonical dir when linking (also pulls
-    /// skills parked in the backup slot of an already linked agent).
-    pub migrate: bool,
 }
 
 /// Request for [`Manager::disable`].
@@ -187,24 +184,13 @@ pub struct AgentStatus {
     /// Whether the agent natively uses the canonical dir (no link involved).
     pub canonical: bool,
     /// Skills inside the agent's own skills dir: real subdirs and dir-targeting
-    /// symlinks — the same classification link and migrate use. Only populated
-    /// for unlinked, non-canonical agents; empty for linked/canonical agents
-    /// (they share the canonical dir, shown by `list`).
+    /// symlinks — the same classification linking uses. Only populated for
+    /// unlinked, non-canonical agents; empty for linked/canonical agents (they
+    /// share the canonical dir, shown by `list`).
     pub internal_skills: Vec<String>,
     /// Non-skill entries (files, symlinks to non-directories) inside the agent's
     /// own skills dir. Same population rules as [`AgentStatus::internal_skills`].
     pub internal_others: Vec<String>,
-    /// Backup slot with parked content waiting for unlink to restore, if any.
-    pub pending_backup: Option<BackupStatus>,
-}
-
-/// A pending backup slot (used by `agent --status`).
-#[derive(Debug)]
-pub struct BackupStatus {
-    /// Backup slot directory (`.agents/backup-skills/<agent>`).
-    pub path: PathBuf,
-    /// Names of the entries parked in the slot.
-    pub items: Vec<String>,
 }
 
 /// Result of [`Manager::agent`].

@@ -45,9 +45,8 @@ src/
 │   ├── fetch.rs        git clone / HTTP download / archive unpacking
 │   ├── github.rs       GitHub API single-skill fast path
 │   ├── install.rs      Install skills into the canonical directory + installed-skills listing
-│   ├── link/           Directory-level agent linking (link/unlink/migrate)
-│   │   ├── mod.rs      Link orchestration + public entry points
-│   │   ├── backup.rs   Backup slots: park/unpark + migration of pre-existing dirs
+│   ├── link/           Directory-level agent linking (link/unlink)
+│   │   ├── mod.rs      Link orchestration + adoption of pre-existing content
 │   │   ├── outcome.rs  LinkOutcome result enum
 │   │   ├── path.rs     Path classification helpers
 │   │   └── tests.rs    Unit tests for the linking machinery
