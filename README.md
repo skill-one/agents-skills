@@ -28,7 +28,7 @@ agents-skills agent --status          # show the link status of each agent
 ```
 
 The core idea is linking: skills are stored exactly once in the canonical
-directory (project-level `.agents/skills/` or global `~/.agents/skills/`), and
+directory (`~/.agents/skills/`), and
 `agent --link` creates, for every installed agent, a symlink in its skills
 directory pointing at the canonical directory; skills installed afterwards via
 `add` become visible to all agents immediately — no syncing needed.
@@ -48,9 +48,10 @@ agents-skills disable pdf                          # disable (moved out of the c
 agents-skills enable pdf                           # re-enable (inverse of disable)
 ```
 
-- Commands operate on the global scope `~/.agents/skills` by default;
-  `--project <dir>` switches to the project scope (`.agents/skills` under the
-  given directory; use `--project .` for the current directory).
+- Commands always operate on the canonical directory `~/.agents/skills`.
+- `add` only ever adds: a skill whose name is already installed — enabled *or*
+  disabled — is reported as `skipped` and left untouched, so local edits are
+  never silently discarded. Replace one with `remove` first, then `add`.
 - Linking adopts whatever the agent's skills directory already holds, and that
   is one-way: skill directories are moved into the canonical directory,
   non-skill entries into `.misc/<agent>/` inside it, and name clashes are
@@ -108,12 +109,11 @@ directories shadow deeper ones.
 
 ### Install locations
 
-- **Canonical directory (the single real copy)** — project-level
-  `./.agents/skills/<name>`, global `~/.agents/skills/<name>`.
+- **Canonical directory (the single real copy)** — `~/.agents/skills/<name>`;
+  disabled skills live in `~/.agents/disabled-skills/<name>`.
 - **Agent integration** — agents that do not natively read the canonical
-  directory get a directory-level symlink: `.claude/skills` →
-  `../.agents/skills` (project) or `~/.claude/skills` → `~/.agents/skills`
-  (global).
+  directory get a directory-level symlink: `~/.claude/skills` →
+  `~/.agents/skills`, and likewise for every other agent.
 
 ## Command cheat sheet
 

@@ -12,7 +12,6 @@ pub fn run(manager: &Manager, args: EnableArgs) -> Result<()> {
             .chain(args.skill.iter())
             .cloned()
             .collect(),
-        global: args.project.is_none(),
         all: args.all,
     };
     let outcome = manager.enable(&req)?;
@@ -32,7 +31,7 @@ fn render(req: &EnableRequest, outcome: &EnableOutcome) {
             }
             println!();
             println!("{DIM}Usage: agents-skills enable <name> [options]{RESET}");
-            println!("{DIM}Options: --project [dir], -s/--skill, --all{RESET}");
+            println!("{DIM}Options: -s/--skill, --all{RESET}");
         }
         return;
     }

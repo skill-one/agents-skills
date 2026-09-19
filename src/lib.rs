@@ -8,7 +8,7 @@
 //! # Quick tour
 //!
 //! ```
-//! use agents_skills::{ListRequest, Manager};
+//! use agents_skills::Manager;
 //!
 //! // Point the manager at a scratch environment (hermetic, no real home access).
 //! let manager = Manager::builder()
@@ -19,7 +19,7 @@
 //!
 //! // Install every skill from a source (see [`Manager::add`] for a local example).
 //! // List what's installed.
-//! let skills = manager.list(&ListRequest::default())?;
+//! let skills = manager.list()?;
 //!
 //! # Ok::<(), agents_skills::Error>(())
 //! ```
@@ -43,7 +43,7 @@ pub mod manager;
 pub use manager::{
     AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus,
     DisableOutcome, DisableRequest, EnableOutcome, EnableRequest, InstallFailure, InstallSuccess,
-    ListRequest, ListedSkill, Manager, ManagerBuilder, RemoveOutcome, RemoveRequest,
+    ListedSkill, Manager, ManagerBuilder, RemoveOutcome, RemoveRequest,
 };
 
 // Data types carried by the facade's outcomes (implementation lives in the private core).

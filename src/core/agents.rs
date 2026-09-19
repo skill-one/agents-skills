@@ -4,9 +4,12 @@
 //! embedded into the binary at compile time): adding or changing an agent is a one-line
 //! edit, no Rust changes required. Resolution is fully declarative — [`PathSpec`] probes
 //! are interpreted against the injectable [`Env`], making unit tests easy (build a temp
-//! dir, no touching the real environment). This module is the single source of truth for
-//! *where* skills live: the canonical dir ([`canonical_skills_dir`]) and each agent's own
-//! skills dir ([`agent_skills_dir`]).
+//! dir, no touching the real environment).
+//!
+//! Skills live in exactly one place — the canonical dir
+//! ([`canonical_skills_dir`], `~/.agents/skills`). Each agent reads its own
+//! directory ([`agent_skills_dir`]), which `agent --link` points at the canonical
+//! dir with a symlink.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -14,7 +17,7 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
-/// The common skills dir shared by most agents.
+/// The canonical skills dir, relative to the home directory.
 pub const UNIVERSAL_SKILLS_DIR: &str = ".agents/skills";
 
 /// The sibling dir where disabled skills are parked (never symlinked to agents).
@@ -192,23 +195,11 @@ pub struct Agent {
     pub name: String,
     /// Human-readable display name.
     pub display: String,
-    /// Project-level skills dir (relative to cwd).
-    pub skills_dir: String,
-    /// Global skills directory.
+    /// Skills directory the agent reads.
     pub global: PathSpec,
     /// Install detection rules (any match = installed; empty = never detected).
     #[serde(default)]
     pub detect: Vec<PathSpec>,
-}
-
-impl Agent {
-    /// Whether its project skills dir is the common `.agents/skills` dir.
-    ///
-    /// This is the project-scope classification only; for the scope-aware
-    /// version (global agents may have a vendor-specific dir) use [`is_native`].
-    pub fn is_universal(&self) -> bool {
-        self.skills_dir == UNIVERSAL_SKILLS_DIR
-    }
 }
 
 /// Parse the JSONL table; invalid input is a build bug, so it panics with the line number.
@@ -249,11 +240,6 @@ pub fn get_agent(name: &str) -> Option<&'static Agent> {
     agents.iter().find(|a| a.name == name)
 }
 
-/// An agent's global skills dir (None when global is unsupported).
-pub fn global_skills_dir(agent: &Agent, env: &Env) -> Option<PathBuf> {
-    agent.global.resolve(env)
-}
-
 /// Lexically resolve `.`/`..` components for path comparison (no filesystem access).
 fn normalize_lexical(p: &Path) -> PathBuf {
     let mut out = PathBuf::new();
@@ -269,51 +255,36 @@ fn normalize_lexical(p: &Path) -> PathBuf {
     out
 }
 
-/// Whether an agent natively reads the canonical dir in the given scope, so no
-/// symlink is needed to expose installed skills to it.
-///
-/// - Project scope: its project skills dir is the common `.agents/skills`.
-/// - Global scope: its resolved global dir equals the global canonical dir
-///   `~/.agents/skills`. Agents with a vendor-specific global dir (e.g.
-///   Antigravity's `~/.gemini/config/skills`) are NOT native globally even when
-///   they are universal at project scope, and must be directory-linked instead.
-pub fn is_native(agent: &Agent, global: bool, env: &Env) -> bool {
-    if global {
-        agent.global.resolve(env).is_some_and(|dir| {
-            normalize_lexical(&dir) == normalize_lexical(&canonical_skills_dir(true, env))
-        })
-    } else {
-        agent.is_universal()
-    }
+/// Whether an agent natively reads the canonical dir, so no symlink is needed:
+/// its resolved skills dir is `~/.agents/skills` itself.
+pub fn is_native(agent: &Agent, env: &Env) -> bool {
+    agent
+        .global
+        .resolve(env)
+        .is_some_and(|dir| normalize_lexical(&dir) == normalize_lexical(&canonical_skills_dir(env)))
 }
 
-/// Canonical skills dir: `(global ? home : cwd)/.agents/skills`.
-pub fn canonical_skills_dir(global: bool, env: &Env) -> PathBuf {
-    let base = if global { &env.home } else { &env.cwd };
-    base.join(UNIVERSAL_SKILLS_DIR)
+/// Canonical skills dir: `~/.agents/skills`.
+pub fn canonical_skills_dir(env: &Env) -> PathBuf {
+    env.home.join(UNIVERSAL_SKILLS_DIR)
 }
 
-/// Disabled skills dir: `(global ? home : cwd)/.agents/disabled-skills`.
+/// Disabled skills dir: `~/.agents/disabled-skills`.
 ///
 /// Disabled skills are moved here, out of the canonical dir, so no agent (linked
-/// or universal) sees them. Enabling moves them back.
-pub fn disabled_skills_dir(global: bool, env: &Env) -> PathBuf {
-    let base = if global { &env.home } else { &env.cwd };
-    base.join(DISABLED_SKILLS_DIR)
+/// or native) sees them. Enabling moves them back.
+pub fn disabled_skills_dir(env: &Env) -> PathBuf {
+    env.home.join(DISABLED_SKILLS_DIR)
 }
 
-/// An agent's own skills dir in the given scope.
+/// An agent's own skills dir.
 ///
-/// `None` only when the global location cannot be resolved (e.g. an
-/// `env_var`-based global dir whose variable is unset). For scope-native agents
-/// the returned dir is the canonical dir itself; check [`is_native`] before
-/// treating it as a linkable location.
-pub fn agent_skills_dir(agent: &Agent, global: bool, env: &Env) -> Option<PathBuf> {
-    if global {
-        global_skills_dir(agent, env)
-    } else {
-        Some(env.cwd.join(&agent.skills_dir))
-    }
+/// `None` only when the location cannot be resolved (e.g. an `env_var`-based dir
+/// whose variable is unset). For scope-native agents the returned dir is the
+/// canonical dir itself; check [`is_native`] before treating it as a linkable
+/// location.
+pub fn agent_skills_dir(agent: &Agent, env: &Env) -> Option<PathBuf> {
+    agent.global.resolve(env)
 }
 
 /// Determine whether an agent is installed: any detection rule resolves to an existing path.
@@ -324,21 +295,10 @@ pub fn is_installed(agent: &Agent, env: &Env) -> bool {
         .any(|spec| spec.resolve(env).is_some_and(|p| p.exists()))
 }
 
-/// Detect currently installed agents (universal is never detected as installed).
+/// Detect currently installed agents.
 pub fn detect_installed_agents(env: &Env) -> Vec<&'static Agent> {
     let agents: &'static [Agent] = *AGENTS;
     agents.iter().filter(|a| is_installed(a, env)).collect()
-}
-
-/// Ensure universal agents are present (append those missing from the target list).
-pub fn ensure_universal_agents(mut target: Vec<&'static Agent>) -> Vec<&'static Agent> {
-    let agents: &'static [Agent] = *AGENTS;
-    for a in agents.iter().filter(|a| a.is_universal()) {
-        if !target.iter().any(|x| x.name == a.name) {
-            target.push(a);
-        }
-    }
-    target
 }
 
 #[cfg(test)]
@@ -356,78 +316,63 @@ mod tests {
     }
 
     #[test]
-    fn universal_agents_use_agents_skills_dir() {
-        for a in ["amp", "codex", "cursor", "opencode"] {
-            let agent = get_agent(a).unwrap();
-            assert!(agent.is_universal(), "{a} should be universal");
-        }
-        let claude = get_agent("claude-code").unwrap();
-        assert!(!claude.is_universal());
-        assert_eq!(claude.skills_dir, ".claude/skills");
-    }
-
-    #[test]
-    fn global_dir_resolution() {
+    fn skills_dir_resolution() {
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
 
         // home base
         let cline = get_agent("cline").unwrap();
         assert_eq!(
-            global_skills_dir(cline, &env).unwrap(),
+            agent_skills_dir(cline, &env).unwrap(),
             tmp.path().join(".agents/skills")
         );
         // config base
         let amp = get_agent("amp").unwrap();
         assert_eq!(
-            global_skills_dir(amp, &env).unwrap(),
+            agent_skills_dir(amp, &env).unwrap(),
             tmp.path().join("config/agents/skills")
         );
-    }
-
-    #[test]
-    fn is_native_is_scope_aware() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let env = env_at(&tmp);
-        let antigravity = get_agent("antigravity").unwrap();
-        let cline = get_agent("cline").unwrap();
+        // vendor-specific home sub-path
         let claude = get_agent("claude-code").unwrap();
-
-        // Project scope: agents sharing `.agents/skills` are native.
-        assert!(is_native(antigravity, false, &env));
-        assert!(is_native(cline, false, &env));
-        assert!(!is_native(claude, false, &env));
-
-        // Global scope: only a global dir equal to ~/.agents/skills is native.
-        // Antigravity reads ~/.gemini/config/skills globally, so it must be linked.
-        assert!(!is_native(antigravity, true, &env));
-        assert!(is_native(cline, true, &env));
-        assert!(!is_native(claude, true, &env));
-    }
-
-    #[test]
-    fn is_native_false_when_global_env_var_unset() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let env = env_at(&tmp);
-        // promptscript is universal at project scope but env-var-based globally.
-        let promptscript = get_agent("promptscript").unwrap();
-        assert!(is_native(promptscript, false, &env));
-        assert!(!is_native(promptscript, true, &env));
-        assert_eq!(agent_skills_dir(promptscript, true, &env), None);
-    }
-
-    #[test]
-    fn agent_skills_dir_resolves_per_scope() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let env = env_at(&tmp);
-        let antigravity = get_agent("antigravity").unwrap();
         assert_eq!(
-            agent_skills_dir(antigravity, false, &env),
-            Some(tmp.path().join(".agents/skills"))
+            agent_skills_dir(claude, &env).unwrap(),
+            tmp.path().join(".claude/skills")
+        );
+    }
+
+    #[test]
+    fn is_native_only_for_the_canonical_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        // Its skills dir is ~/.agents/skills itself.
+        assert!(is_native(get_agent("cline").unwrap(), &env));
+        // Vendor-specific dirs must be linked.
+        assert!(!is_native(get_agent("claude-code").unwrap(), &env));
+        assert!(!is_native(get_agent("antigravity").unwrap(), &env));
+        assert!(!is_native(get_agent("codex").unwrap(), &env));
+    }
+
+    #[test]
+    fn is_native_false_when_env_var_unset() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        // promptscript's dir is env-var-based: unresolved → not native.
+        let promptscript = get_agent("promptscript").unwrap();
+        assert!(!is_native(promptscript, &env));
+        assert_eq!(agent_skills_dir(promptscript, &env), None);
+    }
+
+    #[test]
+    fn canonical_and_disabled_dirs_live_under_home() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        assert_eq!(
+            canonical_skills_dir(&env),
+            tmp.path().join(".agents/skills")
         );
         assert_eq!(
-            agent_skills_dir(antigravity, true, &env),
-            Some(tmp.path().join(".gemini/config/skills"))
+            disabled_skills_dir(&env),
+            tmp.path().join(".agents/disabled-skills")
         );
     }
 
@@ -455,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn universal_never_detected_installed() {
+    fn agent_without_detect_rules_is_never_installed() {
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
         assert!(!is_installed(get_agent("universal").unwrap(), &env));
@@ -524,19 +469,17 @@ mod tests {
     #[test]
     fn agent_table_parses_comments_and_blank_lines() {
         let table = parse_agent_table(
-            "# header comment\n\n{\"name\":\"x\",\"display\":\"X\",\"skills_dir\":\".agents/skills\",\"global\":{\"home\":\".x/skills\"},\"detect\":[{\"home\":\".x\"}]}\n\n",
+            "# header comment\n\n{\"name\":\"x\",\"display\":\"X\",\"global\":{\"home\":\".x/skills\"},\"detect\":[{\"home\":\".x\"}]}\n\n",
         );
         assert_eq!(table.len(), 1);
-        assert!(table[0].is_universal());
+        assert_eq!(table[0].name, "x");
     }
 
     #[test]
     #[should_panic(expected = "duplicate agent 'x'")]
     fn agent_table_rejects_duplicate_names() {
-        let one =
-            r#"{"name":"x","display":"X","skills_dir":"s","global":{"home":".x"},"detect":[]}"#;
-        let two =
-            r#"{"name":"x","display":"Y","skills_dir":"s","global":{"home":".y"},"detect":[]}"#;
+        let one = r#"{"name":"x","display":"X","global":{"home":".x"},"detect":[]}"#;
+        let two = r#"{"name":"x","display":"Y","global":{"home":".y"},"detect":[]}"#;
         parse_agent_table(&format!("{one}\n{two}\n"));
     }
 
@@ -544,7 +487,7 @@ mod tests {
     #[should_panic(expected = "agents.jsonl line 2:")]
     fn agent_table_reports_offending_line() {
         parse_agent_table(
-            "{\"name\":\"x\",\"display\":\"X\",\"skills_dir\":\"s\",\"global\":{\"home\":\".x\"},\"detect\":[]}\nnot json\n",
+            "{\"name\":\"x\",\"display\":\"X\",\"global\":{\"home\":\".x\"},\"detect\":[]}\nnot json\n",
         );
     }
 

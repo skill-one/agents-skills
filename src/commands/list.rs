@@ -3,15 +3,13 @@
 use crate::cli::{BOLD, CYAN, DIM, GREEN, ListArgs, RESET, YELLOW};
 use crate::commands::{fail_agents, shorten_path};
 use agents_skills::error::Result;
-use agents_skills::{Env, ListRequest, ListedSkill, Manager};
+use agents_skills::{Env, ListedSkill, Manager};
 
 /// Longest description rendered before it is ellipsized.
 const DESCRIPTION_MAX: usize = 100;
 
 pub fn run(manager: &Manager, args: ListArgs) -> Result<()> {
-    let global = args.project.is_none();
-    let req = ListRequest { global };
-    let listed = match manager.list(&req) {
+    let listed = match manager.list() {
         Ok(l) => l,
         Err(e) => return fail_agents(e),
     };
@@ -21,21 +19,13 @@ pub fn run(manager: &Manager, args: ListArgs) -> Result<()> {
         return Ok(());
     }
 
-    let scope_label = if global { "Global" } else { "Project" };
     if listed.is_empty() {
-        println!(
-            "{DIM}No {} skills found.{RESET}",
-            scope_label.to_lowercase()
-        );
-        if global {
-            println!("{DIM}Try listing project skills with --project{RESET}");
-        } else {
-            println!("{DIM}Try listing global skills without --project{RESET}");
-        }
+        println!("{DIM}No skills installed.{RESET}");
+        println!("{DIM}Try: agents-skills add <source>{RESET}");
         return Ok(());
     }
 
-    println!("{BOLD}{} Skills{RESET}", scope_label);
+    println!("{BOLD}Skills{RESET}");
     println!();
     for skill in &listed {
         print_skill(skill, manager.env());

@@ -6,9 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::core::agents::{
-    AGENTS, Agent, Env, detect_installed_agents, ensure_universal_agents, get_agent,
-};
+use crate::core::agents::{AGENTS, Agent, Env, detect_installed_agents, get_agent};
 use crate::core::install::{move_skill, sanitize_name};
 use crate::error::{Result, SkillsError};
 
@@ -31,8 +29,7 @@ pub(crate) fn resolve_target_agents(names: &[String], env: &Env) -> Result<Vec<&
         }
         return Ok(agents);
     }
-    let installed = detect_installed_agents(env);
-    Ok(ensure_universal_agents(installed))
+    Ok(detect_installed_agents(env))
 }
 
 /// Resolve requested names against available name sets, matching case-insensitively on
@@ -67,7 +64,6 @@ pub(crate) fn set_enabled_state(
     requested: &[String],
     from_set: &[String],
     target_set: &[String],
-    global: bool,
     to_enabled: bool,
     env: &Env,
 ) -> Result<(Vec<String>, Vec<String>, Vec<String>)> {
@@ -97,7 +93,7 @@ pub(crate) fn set_enabled_state(
     missing.dedup();
 
     for name in &selected {
-        move_skill(name, global, to_enabled, env)?;
+        move_skill(name, to_enabled, env)?;
     }
 
     Ok((selected, already, missing))

@@ -13,7 +13,6 @@ pub fn run(manager: &Manager, args: AddArgs) -> Result<()> {
     for source in &args.source {
         let req = AddRequest {
             source: source.clone(),
-            global: args.project.is_none(),
             skills: args.skill.clone(),
             list_only: args.list,
         };
@@ -116,6 +115,13 @@ fn render(env: &Env, req: &AddRequest, outcome: &AddOutcome) {
             "{GREEN}Installed {count} skill{}{RESET}",
             if count != 1 { "s" } else { "" }
         );
+    }
+    if !outcome.skipped.is_empty() {
+        println!();
+        for name in &outcome.skipped {
+            println!("{YELLOW}•{RESET} {name} {DIM}skipped (already installed){RESET}");
+        }
+        println!("{DIM}To replace an installed skill: remove it first, then add again.{RESET}");
     }
     if !outcome.failed.is_empty() {
         println!();

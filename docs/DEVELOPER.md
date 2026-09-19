@@ -89,7 +89,6 @@ listing order.
 {
   "name": "claude-code",      // required, unique identifier (used on the CLI)
   "display": "Claude Code",   // required, human-readable name
-  "skills_dir": ".claude/skills", // required, project-level skills dir (relative to cwd)
   "global": { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude", "path": "skills" } },
   "detect": [ { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude" } } ]
 }
@@ -108,14 +107,11 @@ Exactly one of these keys per spec:
 | `{"env_var": {"var": "...", "path": "..."}}` | `$VAR/<path>`; unmatched when the var is unset |
 | `{"system": "/abs/path"}` | absolute path; only probed when system probing is on |
 
-Whether an agent needs a symlink is decided **per scope** (`is_native` in
-`agents.rs`): at project scope, agents whose `skills_dir` is `.agents/skills`
-share the canonical dir and need no link; at global scope, the resolved
-`global` spec is compared against `~/.agents/skills` — only agents whose global
-dir equals it (e.g. cline, warp) are native globally. Agents with a
-vendor-specific global dir (e.g. Antigravity's `~/.gemini/config/skills`) are
-project-universal but get a real directory symlink at global scope. The
-`universal` pseudo-agent carries `"detect": []` so it is never detected as
+Whether an agent needs a symlink is decided by `is_native` in `agents.rs`: the
+resolved `global` spec is compared against `~/.agents/skills` — only agents
+whose dir equals it (e.g. cline, warp) are native and need no link. Agents with
+a vendor-specific dir (e.g. Antigravity's `~/.gemini/config/skills`) get a real
+directory symlink. The `universal` pseudo-agent carries `"detect": []` so it is never detected as
 installed.
 
 ## Development

@@ -15,14 +15,12 @@ use agents_skills::{AgentOutcome, AgentRequest, Manager};
 
 /// Run the `agent` command; `--status` reads only, `--unlink` disconnects, otherwise link.
 pub fn run(manager: &Manager, args: crate::cli::AgentArgs) -> Result<()> {
-    let global = args.project.is_none();
     if args.status {
-        render_status(manager, global);
+        render_status(manager);
         return Ok(());
     }
     let req = AgentRequest {
         agents: args.agents,
-        global,
         unlink: args.unlink,
     };
     let outcome = match manager.agent(&req) {
@@ -33,12 +31,11 @@ pub fn run(manager: &Manager, args: crate::cli::AgentArgs) -> Result<()> {
     Ok(())
 }
 
-fn render_status(manager: &Manager, global: bool) {
-    let scope = if global { "global" } else { "project" };
-    println!("{BOLD}Agent link status ({scope}){RESET}");
+fn render_status(manager: &Manager) {
+    println!("{BOLD}Agent link status{RESET}");
     println!();
     // Order comes from the library: canonical agents first, others keep table order.
-    for s in manager.agent_status(global) {
+    for s in manager.agent_status() {
         if s.canonical {
             println!(
                 "  {DIM}•{RESET} {} {DIM}({}) — canonical{RESET}",
@@ -72,11 +69,10 @@ fn render_status(manager: &Manager, global: bool) {
 }
 
 fn render_link(outcome: &AgentOutcome, unlink: bool) {
-    let scope = if outcome.global { "global" } else { "project" };
     if unlink {
-        println!("{DIM}Unlinking agents from the {scope} canonical skills dir{RESET}");
+        println!("{DIM}Unlinking agents from the canonical skills dir{RESET}");
     } else {
-        println!("{DIM}Linking agents to the {scope} canonical skills dir{RESET}");
+        println!("{DIM}Linking agents to the canonical skills dir{RESET}");
     }
     println!();
     for r in &outcome.results {

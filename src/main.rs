@@ -40,18 +40,7 @@ fn main() {
         return;
     }
 
-    // Project scope (`--project <dir>`): point the manager's cwd at that
-    // directory so every project-scope path resolves there. No flag means global.
-    let manager = match cli.command.as_ref().and_then(explicit_project_dir) {
-        Some(dir) => {
-            if !dir.is_dir() {
-                eprintln!("Error: project directory not found: {}", dir.display());
-                std::process::exit(1);
-            }
-            Manager::builder().cwd(dir).build()
-        }
-        None => Manager::new(),
-    };
+    let manager = Manager::new();
 
     let result: Result<()> = match cli.command {
         Some(Command::Add(a)) => commands::add::run(&manager, a),
@@ -67,20 +56,4 @@ fn main() {
         eprintln!("Error: {e}");
         std::process::exit(1);
     }
-}
-
-/// Explicit `--project <dir>` directory, if the subcommand carries one.
-///
-/// The value is required, so the grammar is unambiguous: whatever follows the
-/// flag is the project directory.
-fn explicit_project_dir(command: &Command) -> Option<&std::path::Path> {
-    let project = match command {
-        Command::Add(a) => &a.project,
-        Command::Remove(r) => &r.project,
-        Command::List(l) => &l.project,
-        Command::Disable(d) => &d.project,
-        Command::Enable(e) => &e.project,
-        Command::Agent(a) => &a.project,
-    };
-    project.as_deref()
 }

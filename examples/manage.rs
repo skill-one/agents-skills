@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use agents_skills::{AddRequest, ListRequest, Manager, RemoveRequest};
+use agents_skills::{AddRequest, Manager, RemoveRequest};
 
 /// Create a minimal skill directory on disk for the demo.
 fn write_skill(root: &Path, name: &str) -> std::path::PathBuf {
@@ -40,7 +40,7 @@ fn main() -> agents_skills::Result<()> {
     println!("Installed {} skill(s)", outcome.installed.len());
 
     // List installed skills (serde-serializable; same shape as `list --json`).
-    let skills = manager.list(&ListRequest::default())?;
+    let skills = manager.list()?;
     for s in &skills {
         println!("  - {}: {}", s.name, s.path.display());
     }

@@ -12,8 +12,8 @@ use crate::core::discover::{Skill, discover_skills, filter_skills};
 use crate::core::fetch::fetch_source;
 use crate::core::github::{fetch_skill_via_api, fetch_subdir_via_api};
 use crate::core::install::{
-    get_canonical_path, install_skill, list_disabled_skills, list_installed_skills, sanitize_name,
-    scan_disabled, scan_installed,
+    get_canonical_path, install_skill, list_disabled_skills, list_installed_skills, scan_disabled,
+    scan_installed,
 };
 use crate::core::link::{is_agent_linked, link_agent, private_content, unlink_agent};
 use crate::core::source::{SourceType, parse_source};
@@ -25,7 +25,7 @@ use crate::manager::select::{
 pub use crate::manager::types::{
     AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus,
     DisableOutcome, DisableRequest, EnableOutcome, EnableRequest, InstallFailure, InstallSuccess,
-    ListRequest, ListedSkill, RemoveOutcome, RemoveRequest,
+    ListedSkill, RemoveOutcome, RemoveRequest,
 };
 mod select;
 #[cfg(test)]
@@ -99,8 +99,13 @@ impl Manager {
     ///
     /// Parses the source, discovers its skills, and installs each selected skill
     /// into the canonical dir (the only place real files live). Returns a
-    /// structured [`AddOutcome`] with discovered, selected, installed and failed
-    /// skills.
+    /// structured [`AddOutcome`] with discovered, selected, installed, skipped
+    /// and failed skills.
+    ///
+    /// `add` only ever adds: a selected skill whose name is already installed —
+    /// enabled *or* disabled — is reported in [`AddOutcome`] `skipped` and left
+    /// untouched, so local edits are never silently discarded. Replace an
+    /// installed skill with [`Manager::remove`] followed by `add`.
     ///
     /// `add` never links any agent: use [`Manager::agent`] to expose the canonical
     /// dir to an agent afterwards.
@@ -200,6 +205,7 @@ impl Manager {
                 skills,
                 selected: Vec::new(),
                 installed: Vec::new(),
+                skipped: Vec::new(),
                 failed: Vec::new(),
                 list_only: true,
             });
@@ -216,19 +222,23 @@ impl Manager {
         };
 
         // Install into the canonical dir (the only place real files live).
+        // An already-installed name (enabled or disabled) is skipped, not replaced.
         let mut installed: Vec<InstallSuccess> = Vec::new();
+        let mut skipped: Vec<String> = Vec::new();
         let mut failed: Vec<InstallFailure> = Vec::new();
         for skill in &selected {
-            let r = install_skill(skill, req.global, &self.env);
-            if r.success && !r.skipped {
-                installed.push(InstallSuccess {
-                    name: skill.name.clone(),
-                    canonical_path: r.canonical_path,
-                });
-            } else if !r.success {
+            let r = install_skill(skill, &self.env);
+            if !r.success {
                 failed.push(InstallFailure {
                     skill: skill.name.clone(),
                     error: r.error.unwrap_or_default(),
+                });
+            } else if r.skipped {
+                skipped.push(skill.name.clone());
+            } else {
+                installed.push(InstallSuccess {
+                    name: skill.name.clone(),
+                    canonical_path: r.canonical_path,
                 });
             }
         }
@@ -238,6 +248,7 @@ impl Manager {
             skills,
             selected,
             installed,
+            skipped,
             failed,
             list_only: false,
         })
@@ -289,16 +300,13 @@ impl Manager {
                 agent: agent.name.to_string(),
                 display: agent.display.to_string(),
                 outcome: if req.unlink {
-                    unlink_agent(agent, req.global, &self.env)
+                    unlink_agent(agent, &self.env)
                 } else {
-                    link_agent(agent, req.global, &self.env)
+                    link_agent(agent, &self.env)
                 },
             })
             .collect();
-        Ok(AgentOutcome {
-            global: req.global,
-            results,
-        })
+        Ok(AgentOutcome { results })
     }
 
     /// Link status of every installed agent in this scope.
@@ -317,23 +325,23 @@ impl Manager {
     /// come first, then the remaining agents — both groups keep the static agent
     /// table order. This is the exact order `agent --status` renders; callers do
     /// not need to sort again.
-    pub fn agent_status(&self, global: bool) -> Vec<AgentStatus> {
+    pub fn agent_status(&self) -> Vec<AgentStatus> {
         let mut statuses: Vec<AgentStatus> = AGENTS
             .iter()
             .filter(|a| {
                 is_installed(a, &self.env)
-                    || (!is_native(a, global, &self.env) && is_agent_linked(a, global, &self.env))
+                    || (!is_native(a, &self.env) && is_agent_linked(a, &self.env))
             })
             .map(|a| {
-                let canonical = is_native(a, global, &self.env);
-                let linked = is_agent_linked(a, global, &self.env);
+                let canonical = is_native(a, &self.env);
+                let linked = is_agent_linked(a, &self.env);
                 // For unlinked, non-canonical agents, classify the private content
                 // of the agent's own skills dir (canonical/linked agents share the
                 // canonical dir, whose contents are shown by `list` instead).
                 let (internal_skills, internal_others) = if linked || canonical {
                     (Vec::new(), Vec::new())
                 } else {
-                    private_content(a, global, &self.env)
+                    private_content(a, &self.env)
                 };
                 AgentStatus {
                     name: a.name.to_string(),
@@ -350,29 +358,29 @@ impl Manager {
         statuses
     }
 
-    /// List installed skills (project or global).
+    /// List installed skills.
     ///
     /// Scans the canonical skills directory (plus the disabled dir), producing
     /// serde-serializable [`ListedSkill`] values — the same shape emitted by
-    /// `list --json`. Which agents see a skill is scope-level state, not
-    /// per-skill: every linked or native agent sees all skills in the
-    /// canonical dir. Use [`Manager::agent_status`] to inspect it.
+    /// `list --json`. Which agents see a skill is not per-skill: every linked or
+    /// native agent sees all skills in the canonical dir. Use
+    /// [`Manager::agent_status`] to inspect that.
     ///
     /// # Examples
     ///
     /// ```
-    /// use agents_skills::{ListRequest, Manager};
+    /// use agents_skills::Manager;
     ///
     /// let manager = Manager::new();
-    /// let skills = manager.list(&ListRequest::default())?;
+    /// let skills = manager.list()?;
     /// for skill in skills {
     ///     println!("{} -> {}", skill.name, skill.path.display());
     /// }
     /// # Ok::<(), agents_skills::Error>(())
     /// ```
-    pub fn list(&self, req: &ListRequest) -> Result<Vec<ListedSkill>> {
-        let installed = list_installed_skills(&self.env, req.global);
-        let disabled = list_disabled_skills(&self.env, req.global);
+    pub fn list(&self) -> Result<Vec<ListedSkill>> {
+        let installed = list_installed_skills(&self.env);
+        let disabled = list_disabled_skills(&self.env);
 
         let mut out = Vec::new();
         for s in installed {
@@ -419,7 +427,7 @@ impl Manager {
     ///
     /// let tmp = tempfile::TempDir::new().unwrap();
     /// // Simulate an installed skill in the canonical dir.
-    /// let skill_dir = tmp.path().join("project/.agents/skills/pdf");
+    /// let skill_dir = tmp.path().join("home/.agents/skills/pdf");
     /// std::fs::create_dir_all(&skill_dir).unwrap();
     /// std::fs::write(
     ///     skill_dir.join("SKILL.md"),
@@ -445,9 +453,8 @@ impl Manager {
     ///
     /// [`SkillsError::Io`] if a directory move fails.
     pub fn disable(&self, req: &DisableRequest) -> Result<DisableOutcome> {
-        let global = req.global;
-        let installed = scan_installed(&self.env, global);
-        let disabled = scan_disabled(&self.env, global);
+        let installed = scan_installed(&self.env);
+        let disabled = scan_disabled(&self.env);
 
         if req.skills.is_empty() && !req.all {
             return Ok(DisableOutcome {
@@ -465,7 +472,7 @@ impl Manager {
             req.skills.clone()
         };
         let (disabled_out, already, missing) =
-            set_enabled_state(&requested, &installed, &disabled, global, false, &self.env)?;
+            set_enabled_state(&requested, &installed, &disabled, false, &self.env)?;
 
         Ok(DisableOutcome {
             installed,
@@ -498,7 +505,7 @@ impl Manager {
     ///
     /// let tmp = tempfile::TempDir::new().unwrap();
     /// // Simulate a disabled skill parked in the disabled-skills dir.
-    /// let skill_dir = tmp.path().join("project/.agents/disabled-skills/pdf");
+    /// let skill_dir = tmp.path().join("home/.agents/disabled-skills/pdf");
     /// std::fs::create_dir_all(&skill_dir).unwrap();
     /// std::fs::write(
     ///     skill_dir.join("SKILL.md"),
@@ -524,9 +531,8 @@ impl Manager {
     ///
     /// [`SkillsError::Io`] if a directory move fails.
     pub fn enable(&self, req: &EnableRequest) -> Result<EnableOutcome> {
-        let global = req.global;
-        let disabled = scan_disabled(&self.env, global);
-        let installed = scan_installed(&self.env, global);
+        let disabled = scan_disabled(&self.env);
+        let installed = scan_installed(&self.env);
 
         if req.skills.is_empty() && !req.all {
             return Ok(EnableOutcome {
@@ -544,7 +550,7 @@ impl Manager {
             req.skills.clone()
         };
         let (enabled_out, already, missing) =
-            set_enabled_state(&requested, &disabled, &installed, global, true, &self.env)?;
+            set_enabled_state(&requested, &disabled, &installed, true, &self.env)?;
 
         Ok(EnableOutcome {
             disabled,
@@ -589,12 +595,10 @@ impl Manager {
     /// # Ok::<(), agents_skills::Error>(())
     /// ```
     pub fn remove(&self, req: &RemoveRequest) -> Result<RemoveOutcome> {
-        let global = req.global;
-
         // Disabled skills are still installed (parked in `disabled-skills`): scan them
         // too so `remove <name>` and `remove --all` can find and delete them.
-        let installed = scan_installed(&self.env, global);
-        let disabled = scan_disabled(&self.env, global);
+        let installed = scan_installed(&self.env);
+        let disabled = scan_disabled(&self.env);
 
         // List-only mode (no skills and not --all).
         if req.skills.is_empty() && !req.all {
@@ -629,14 +633,12 @@ impl Manager {
         }
 
         // Remove from the canonical dir (visible to every linked agent at once).
+        // `selected` holds on-disk directory names, so both lookups use them as-is.
         let mut removed: Vec<String> = Vec::new();
         for name in &selected {
-            let canonical = get_canonical_path(name, global, &self.env);
-            let sanitized = sanitize_name(name);
-            let _ = std::fs::remove_dir_all(&canonical);
+            let _ = std::fs::remove_dir_all(get_canonical_path(name, &self.env));
             // Also remove any parked copy in the disabled dir.
-            let parked = disabled_skills_dir(global, &self.env).join(&sanitized);
-            let _ = std::fs::remove_dir_all(&parked);
+            let _ = std::fs::remove_dir_all(disabled_skills_dir(&self.env).join(name));
 
             removed.push(name.clone());
         }

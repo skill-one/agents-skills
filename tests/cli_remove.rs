@@ -12,13 +12,13 @@ fn remove_deletes_installed_skill() {
     let src = p.write_skill_source("my-skill", "pdf");
 
     p.skills()
-        .args(["add", src.to_str().unwrap(), "--project", "."])
+        .args(["add", src.to_str().unwrap()])
         .assert()
         .success();
     p.assert_exists(".agents/skills/pdf");
 
     p.skills()
-        .args(["remove", "pdf", "--project", "."])
+        .args(["remove", "pdf"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Successfully removed 1 skill"));
@@ -33,18 +33,15 @@ fn remove_all_flag_removes_everything() {
     let b = p.write_skill_source("skill-b", "docx");
 
     p.skills()
-        .args(["add", a.to_str().unwrap(), "--project", "."])
+        .args(["add", a.to_str().unwrap()])
         .assert()
         .success();
     p.skills()
-        .args(["add", b.to_str().unwrap(), "--project", "."])
+        .args(["add", b.to_str().unwrap()])
         .assert()
         .success();
 
-    p.skills()
-        .args(["remove", "--all", "--project", "."])
-        .assert()
-        .success();
+    p.skills().args(["remove", "--all"]).assert().success();
 
     p.assert_absent(".agents/skills/pdf");
     p.assert_absent(".agents/skills/docx");
@@ -56,12 +53,12 @@ fn remove_without_args_prints_installed_list() {
     let src = p.write_skill_source("my-skill", "pdf");
 
     p.skills()
-        .args(["add", src.to_str().unwrap(), "--project", "."])
+        .args(["add", src.to_str().unwrap()])
         .assert()
         .success();
 
     p.skills()
-        .args(["remove", "--project", "."])
+        .args(["remove"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Installed skills"))
@@ -74,16 +71,16 @@ fn remove_without_args_prints_installed_list() {
 fn remove_nonexistent_prints_no_match() {
     let p = TestProject::new();
     p.skills()
-        .args(["remove", "ghost", "--project", "."])
+        .args(["remove", "ghost"])
         .assert()
         .success()
         .stdout(predicate::str::contains("No matching skills found"));
 }
 
 #[test]
-fn remove_deletes_disabled_skill_without_lock_entry() {
+fn remove_deletes_disabled_skill() {
     let p = TestProject::new();
-    // Simulate a skill parked in the disabled dir by a third-party tool: no lockfile entry.
+    // A skill parked in the disabled dir (e.g. by a third-party tool).
     let disabled = p.path().join(".agents/disabled-skills/legacy");
     std::fs::create_dir_all(&disabled).unwrap();
     std::fs::write(
@@ -93,7 +90,7 @@ fn remove_deletes_disabled_skill_without_lock_entry() {
     .unwrap();
 
     p.skills()
-        .args(["remove", "legacy", "--project", "."])
+        .args(["remove", "legacy"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Successfully removed 1 skill"));
@@ -104,10 +101,10 @@ fn remove_deletes_disabled_skill_without_lock_entry() {
 #[test]
 fn remove_all_deletes_disabled_skills() {
     let p = TestProject::new();
-    // An enabled skill plus a disabled one (no lock entry for the disabled).
+    // An enabled skill plus a disabled one.
     let src = p.write_skill_source("my-skill", "pdf");
     p.skills()
-        .args(["add", src.to_str().unwrap(), "--project", "."])
+        .args(["add", src.to_str().unwrap()])
         .assert()
         .success();
     let disabled = p.path().join(".agents/disabled-skills/legacy");
@@ -118,10 +115,7 @@ fn remove_all_deletes_disabled_skills() {
     )
     .unwrap();
 
-    p.skills()
-        .args(["remove", "--all", "--project", "."])
-        .assert()
-        .success();
+    p.skills().args(["remove", "--all"]).assert().success();
 
     p.assert_absent(".agents/skills/pdf");
     p.assert_absent(".agents/disabled-skills/legacy");

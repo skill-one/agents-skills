@@ -45,31 +45,28 @@ fn main() -> agents_skills::Result<()> {
 
 | 方法                      | 请求               | 返回                                   |
 | ------------------------- | ------------------ | -------------------------------------- |
-| [`Manager::add`]          | [`AddRequest`]     | [`AddOutcome`]（已安装 + 链接 + 失败） |
+| [`Manager::add`]          | [`AddRequest`]     | [`AddOutcome`]（已安装 + 跳过 + 失败） |
 | [`Manager::agent`]        | [`AgentRequest`]   | [`AgentOutcome`]（逐 agent 结果）      |
-| [`Manager::agent_status`] | `bool`（global）   | `Vec<`[`AgentStatus`]`>`               |
-| [`Manager::list`]         | [`ListRequest`]    | `Vec<`[`ListedSkill`]`>`（可序列化）   |
+| [`Manager::agent_status`] | —                  | `Vec<`[`AgentStatus`]`>`               |
+| [`Manager::list`]         | —                  | `Vec<`[`ListedSkill`]`>`（可序列化）   |
 | [`Manager::remove`]       | [`RemoveRequest`]  | [`RemoveOutcome`]（已移除名称）        |
 | [`Manager::disable`]      | [`DisableRequest`] | [`DisableOutcome`]（已禁用名称）       |
 | [`Manager::enable`]       | [`EnableRequest`]  | [`EnableOutcome`]（已启用名称）        |
 
 ### 请求结构体字段
 
-| 结构体             | 字段（除 `global: bool` 外）                                                                                |
-| ------------------ | ----------------------------------------------------------------------------------------------------------- |
-| [`AddRequest`]     | `source: String`、`skills: Vec<String>`（`"*"` 或具体名，空 = 全部）、`list_only: bool`                     |
-| [`AgentRequest`]   | `agents: Vec<String>`、`unlink: bool`                                                                       |
-| [`ListRequest`]    | —（作用域仅由 `global: bool` 决定）                                                                         |
-| [`RemoveRequest`]  | `skills: Vec<String>`、`all: bool`                                                                          |
-| [`DisableRequest`] | `skills: Vec<String>`、`all: bool`                                                                          |
-| [`EnableRequest`]  | `skills: Vec<String>`、`all: bool`                                                                          |
+| 结构体             | 字段                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------ |
+| [`AddRequest`]     | `source: String`、`skills: Vec<String>`（`"*"` 或具体名，空 = 全部）、`list_only: bool`          |
+| [`AgentRequest`]   | `agents: Vec<String>`、`unlink: bool`                                                            |
+| [`RemoveRequest`]  | `skills: Vec<String>`、`all: bool`                                                               |
+| [`DisableRequest`] | `skills: Vec<String>`、`all: bool`                                                               |
+| [`EnableRequest`]  | `skills: Vec<String>`、`all: bool`                                                               |
 
-所有请求结构体带 `global: bool` 字段：`true` 操作全局 `~/.agents/skills`（CLI 默认），
-`false` 操作项目级 `./.agents/skills`（对应 CLI 的 `--project`）。项目根取自
-`Env.cwd`（可用 `Manager::builder().cwd()` 覆盖，对应 CLI 的 `--project <目录>`）。
-`AgentRequest` 的 `agents` 字段用于限定 agent（`"*"` 或具体名，
-空 = 自动探测）。哪些 agent 能看到某个技能是作用域级状态（由
-[`Manager::agent_status`] 查询），不是 per-skill 属性。
+所有命令只操作规范目录 `~/.agents/skills`，没有作用域选项。
+`AgentRequest` 的 `agents` 字段用于限定 agent（`"*"` 或具体名，空 = 自动探测）。
+哪些 agent 能看到某个技能不是 per-skill 属性——每个已链接或 native 的 agent 都能
+看到整个规范目录，由 [`Manager::agent_status`] 查询。
 
 ### 结果结构体字段
 
@@ -78,6 +75,9 @@ fn main() -> agents_skills::Result<()> {
 `disabled-skills`）、`enabled`、`installed_at`（Unix 秒，UTC；文件系统不记录
 创建时间时为 `None`）。`installed_at` 是"技能落到磁盘的时间"的近似值：`add`
 安装是精确的，但从 agent 目录并入的技能会保留该目录原本的创建时间。
+
+[`Manager::add`] 返回 [`AddOutcome`]：`skills`（全部发现的技能）、`selected`、
+`installed`、`skipped`（同名已安装——`add` 绝不覆盖）、`failed`。
 
 ### 与 CLI 的对应约定
 
@@ -96,7 +96,7 @@ fn main() -> agents_skills::Result<()> {
 ### 常见操作
 
 ```rust
-use agents_skills::{AddRequest, DisableRequest, EnableRequest, ListRequest, RemoveRequest};
+use agents_skills::{AddRequest, DisableRequest, EnableRequest, RemoveRequest};
 
 // 安装指定技能 / 只列出不安装
 let outcome = manager.add(&AddRequest {
@@ -106,8 +106,8 @@ let outcome = manager.add(&AddRequest {
     ..Default::default()
 })?;
 
-// 列出技能（global 字段选作用域；--json 为 CLI 对应能力）
-let skills = manager.list(&ListRequest::default())?;
+// 列出技能（--json 为 CLI 对应能力）
+let skills = manager.list()?;
 let json = serde_json::to_string_pretty(&skills)?; // CLI 的 list --json
 
 // 移除技能
@@ -160,7 +160,6 @@ cargo run --example add_skill   # 通过 Manager 安装到真实环境
 [`AgentOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.AgentOutcome.html
 [`AgentStatus`]: https://docs.rs/agents-skills/latest/agents_skills/struct.AgentStatus.html
 [`LinkOutcome::Refused`]: https://docs.rs/agents-skills/latest/agents_skills/enum.LinkOutcome.html
-[`ListRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.ListRequest.html
 [`ListedSkill`]: https://docs.rs/agents-skills/latest/agents_skills/struct.ListedSkill.html
 [`RemoveRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.RemoveRequest.html
 [`RemoveOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.RemoveOutcome.html

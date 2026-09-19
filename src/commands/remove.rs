@@ -13,7 +13,6 @@ pub fn run(manager: &Manager, args: RemoveArgs) -> Result<()> {
             .chain(args.skill.iter())
             .cloned()
             .collect(),
-        global: args.project.is_none(),
         all: args.all,
     };
     let outcome = match manager.remove(&req) {
@@ -36,7 +35,7 @@ fn render(req: &RemoveRequest, outcome: &RemoveOutcome) {
             }
             println!();
             println!("{DIM}Usage: agents-skills remove <name> [options]{RESET}");
-            println!("{DIM}Options: --project [dir], -s/--skill, --all{RESET}");
+            println!("{DIM}Options: -s/--skill, --all{RESET}");
         }
         return;
     }

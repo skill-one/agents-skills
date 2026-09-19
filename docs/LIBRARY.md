@@ -49,33 +49,29 @@ overrides.
 
 | Method                    | Request            | Returns                                       |
 | ------------------------- | ------------------ | --------------------------------------------- |
-| [`Manager::add`]          | [`AddRequest`]     | [`AddOutcome`] (installed + linked + failed)  |
+| [`Manager::add`]          | [`AddRequest`]     | [`AddOutcome`] (installed + skipped + failed) |
 | [`Manager::agent`]        | [`AgentRequest`]   | [`AgentOutcome`] (per-agent results)          |
-| [`Manager::agent_status`] | `bool` (global)    | `Vec<`[`AgentStatus`]`>`                      |
-| [`Manager::list`]         | [`ListRequest`]    | `Vec<`[`ListedSkill`]`>` (serializable)       |
+| [`Manager::agent_status`] | —                  | `Vec<`[`AgentStatus`]`>`                      |
+| [`Manager::list`]         | —                  | `Vec<`[`ListedSkill`]`>` (serializable)       |
 | [`Manager::remove`]       | [`RemoveRequest`]  | [`RemoveOutcome`] (removed names)             |
 | [`Manager::disable`]      | [`DisableRequest`] | [`DisableOutcome`] (disabled names)           |
 | [`Manager::enable`]       | [`EnableRequest`]  | [`EnableOutcome`] (enabled names)             |
 
 ### Request-struct fields
 
-| Struct             | Fields (besides `global: bool`)                                                                             |
-| ------------------ | ----------------------------------------------------------------------------------------------------------- |
-| [`AddRequest`]     | `source: String`, `skills: Vec<String>` (`"*"` or specific names, empty = all), `list_only: bool`           |
-| [`AgentRequest`]   | `agents: Vec<String>`, `unlink: bool`                                                                       |
-| [`ListRequest`]    | — (scope only, via `global: bool`)                                                                          |
-| [`RemoveRequest`]  | `skills: Vec<String>`, `all: bool`                                                                          |
-| [`DisableRequest`] | `skills: Vec<String>`, `all: bool`                                                                          |
-| [`EnableRequest`]  | `skills: Vec<String>`, `all: bool`                                                                          |
+| Struct             | Fields                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------- |
+| [`AddRequest`]     | `source: String`, `skills: Vec<String>` (`"*"` or specific names, empty = all), `list_only: bool` |
+| [`AgentRequest`]   | `agents: Vec<String>`, `unlink: bool`                                                             |
+| [`RemoveRequest`]  | `skills: Vec<String>`, `all: bool`                                                                |
+| [`DisableRequest`] | `skills: Vec<String>`, `all: bool`                                                                |
+| [`EnableRequest`]  | `skills: Vec<String>`, `all: bool`                                                                |
 
-All request structs carry a `global: bool` field: `true` operates on the
-global `~/.agents/skills` (the CLI default), `false` on the project-level
-`./.agents/skills` (the CLI's `--project`). The project root comes from
-`Env.cwd` (overridable via `Manager::builder().cwd()`, corresponding to the
-CLI's `--project <dir>`). The `agents` field of [`AgentRequest`] restricts the
-agents (`"*"` or specific names, empty = auto-detect). Which agents see a
-skill is scope-level state, reported by [`Manager::agent_status`] — not a
-per-skill property.
+Every command operates on the canonical directory `~/.agents/skills`; there is
+no scope option. The `agents` field of [`AgentRequest`] restricts the agents
+(`"*"` or specific names, empty = auto-detect). Which agents see a skill is
+not a per-skill property — every linked or native agent sees the whole
+canonical directory, as reported by [`Manager::agent_status`].
 
 ### Result-struct fields
 
@@ -86,6 +82,10 @@ directory the skill currently lives in: canonical, or `disabled-skills`),
 records no creation time). `installed_at` approximates when the skill landed on
 disk: exact for `add` installs, but a skill adopted from an agent directory
 keeps that directory's original creation time.
+
+[`Manager::add`] returns [`AddOutcome`]: `skills` (everything discovered),
+`selected`, `installed`, `skipped` (names already installed — `add` never
+overwrites), and `failed`.
 
 ### Correspondence with the CLI
 
@@ -109,7 +109,7 @@ keeps that directory's original creation time.
 ### Common operations
 
 ```rust
-use agents_skills::{AddRequest, DisableRequest, EnableRequest, ListRequest, RemoveRequest};
+use agents_skills::{AddRequest, DisableRequest, EnableRequest, RemoveRequest};
 
 // Install specific skills / list without installing
 let outcome = manager.add(&AddRequest {
@@ -119,8 +119,8 @@ let outcome = manager.add(&AddRequest {
     ..Default::default()
 })?;
 
-// List skills (the global field picks the scope; --json is the CLI counterpart)
-let skills = manager.list(&ListRequest::default())?;
+// List skills (--json is the CLI counterpart)
+let skills = manager.list()?;
 let json = serde_json::to_string_pretty(&skills)?; // the CLI's list --json
 
 // Remove skills
@@ -176,7 +176,6 @@ telemetry** — no data ever leaves your machine.
 [`AgentOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.AgentOutcome.html
 [`AgentStatus`]: https://docs.rs/agents-skills/latest/agents_skills/struct.AgentStatus.html
 [`LinkOutcome::Refused`]: https://docs.rs/agents-skills/latest/agents_skills/enum.LinkOutcome.html
-[`ListRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.ListRequest.html
 [`ListedSkill`]: https://docs.rs/agents-skills/latest/agents_skills/struct.ListedSkill.html
 [`RemoveRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.RemoveRequest.html
 [`RemoveOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.RemoveOutcome.html

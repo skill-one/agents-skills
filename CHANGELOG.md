@@ -7,6 +7,58 @@ the project adheres to [Semantic Versioning](https://semver.org/): while in
 
 For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## [0.17.0] — 2026-09-19
+
+### Removed
+
+- **(breaking)** Project scope. Skills live in exactly one place now — the
+  canonical dir `~/.agents/skills` — and every command operates on it. The
+  `-p/--project <dir>` flag is gone from all six subcommands, along with the
+  `global: bool` field on every request struct, `AgentRequest.global`,
+  `AgentOutcome.global`, `Agent.list()`'s parameter, and `ListRequest`
+  (`Manager::list` now takes no request). `Agent.skills_dir` is gone from the
+  agent table (`agents.jsonl`, 84 lines), `is_universal()` and
+  `ensure_universal_agents()` are gone, and `is_native` now only compares the
+  resolved skills dir against `~/.agents/skills`. The project-scope
+  `.misc/.gitignore` trick went away with it — `$HOME` is not version
+  controlled. `discover`'s `AGENT_PROJECT_SKILL_DIRS` is unrelated (it lists
+  container dirs to scan inside a *source* repository) and stays.
+  `PathSpec::Cwd` and cwd-based detection rules stay too: they describe where an
+  agent is installed, not a scope.
+
+### Changed
+
+- **(breaking)** `add` no longer overwrites an installed skill. A selected skill
+  whose name is already installed — enabled *or* disabled — is reported in the
+  new `AddOutcome.skipped` and left untouched. Local edits are therefore never
+  silently discarded, and installing over a *disabled* skill can no longer leave
+  a duplicate copy behind (one name in both `skills/` and `disabled-skills/`).
+  Replace an installed skill with `remove` + `add` — that is also how it is
+  updated now, since `update` was removed in 0.13.0.
+
+### Fixed
+
+- (install) `disable`, `enable` and `remove` now find skills whose directory
+  name was never normalized. A skill adopted from an agent dir keeps its
+  original directory name, which need not equal
+  `sanitize_name(frontmatter name)`, while `move_skill` / `get_canonical_path` /
+  `remove` re-sanitized it: `disable` failed with an IO error and `remove`
+  reported success without deleting anything.
+
+- (link) Name clashes on adopt are detected across normalized and unnormalized
+  names in *both* skills dirs. The canonical dir was only checked with the raw
+  name, so e.g. `pdf-master` (canonical) plus `PDF Master` (agent) both ended up
+  installed under the same skill name.
+
+### Removed
+
+- (install) The replace-and-rollback path in `install_skill`. With `add` never
+  overwriting, the destination can no longer pre-exist, so the `.old-*` staging
+  dir and its rollback were dead code.
+
+- (cli) The `project directory not found` check and `explicit_project_dir` in
+  `main.rs`, and the `Options: --project [dir], ...` hints.
+
 ## [0.16.0] — 2026-09-19
 
 ### Added

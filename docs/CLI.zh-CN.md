@@ -25,9 +25,8 @@ cargo install agents-skills
 
 命令不设别名（极简接口，只认全名）。
 
-通用说明：技能存放在规范目录（全局 `~/.agents/skills` 或项目 `.agents/skills`）。
-默认操作**全局**作用域；`-p/--project <目录>` 切换到**项目**作用域，目录值必填且
-必须已存在，操作该目录下的 `.agents/skills`（当前目录写 `--project .`）。
+通用说明：技能只存放在一个地方 —— 规范目录 `~/.agents/skills`，所有命令都只操作
+它。被禁用的技能停放在同级的 `~/.agents/disabled-skills`。
 
 ## add
 
@@ -37,18 +36,19 @@ cargo install agents-skills
 agents-skills add <source...> [options]
 ```
 
-| 选项                    | 说明                  |
-| --------------------- | ------------------- |
-| `-p, --project <dir>` | 安装到指定项目目录（默认全局）     |
-| `-s, --skill <s>...`  | 要安装的技能名（`'*'` 表示全部） |
-| `-l, --list`          | 仅列出可用技能，不安装         |
+| 选项                   | 说明                  |
+| -------------------- | ------------------- |
+| `-s, --skill <s>...` | 要安装的技能名（`'*'` 表示全部） |
+| `-l, --list`         | 仅列出可用技能，不安装         |
 
 ```bash
-agents-skills add anthropics/skills               # 安装到全局 ~/.agents/skills
-agents-skills add anthropics/skills --project .   # 安装到当前项目 .agents/skills
+agents-skills add anthropics/skills               # 安装到 ~/.agents/skills
 agents-skills add anthropics/skills@pdf           # 仅安装指定技能
 agents-skills add anthropics/skills -l            # 只列出可用技能
 ```
+
+`add` 只做新增、绝不覆盖：若同名技能已安装（**无论启用还是禁用**），会报告
+`skipped` 并原样保留。要替换已安装技能，请先 `remove`。
 
 安装后运行 `agents-skills agent --link` 让 agent 可见（`add` 不自动链接）。
 
@@ -60,11 +60,10 @@ agents-skills add anthropics/skills -l            # 只列出可用技能
 agents-skills remove [skills...] [options]
 ```
 
-| 选项                    | 说明                 |
-| --------------------- | ------------------ |
-| `-p, --project <dir>` | 从指定项目目录移除（默认全局）    |
-| `-s, --skill <s>...`  | 要移除的技能（`'*'` 表示全部） |
-| `--all`               | 移除全部技能（含已禁用的）      |
+| 选项                   | 说明                 |
+| -------------------- | ------------------ |
+| `-s, --skill <s>...` | 要移除的技能（`'*'` 表示全部） |
+| `--all`              | 移除全部技能（含已禁用的）      |
 
 ```bash
 agents-skills remove pdf      # 移除指定技能
@@ -80,15 +79,13 @@ agents-skills remove --all    # 移除全部技能
 agents-skills list [options]
 ```
 
-| 选项                    | 说明                  |
-| --------------------- | ------------------- |
-| `-p, --project <dir>` | 列出指定项目目录的技能（默认全局）   |
-| `--json`              | JSON 输出（机器可读）       |
+| 选项       | 说明            |
+| -------- | ------------- |
+| `--json` | JSON 输出（机器可读） |
 
 ```bash
 agents-skills list
 agents-skills list --json
-agents-skills list --project .
 ```
 
 每个技能打印两行 —— 名称与描述，随后是 `路径 [状态] · <本地安装时间>`：
@@ -124,11 +121,10 @@ agents-skills disable [skills...] [options]
 agents-skills enable  [skills...] [options]
 ```
 
-| 选项                    | 说明                 |
-| --------------------- | ------------------ |
-| `-p, --project <dir>` | 项目作用域，指定项目目录（默认全局） |
-| `-s, --skill <s>...`  | 目标技能（`'*'` 表示全部）   |
-| `--all`               | 禁用所有已启用 / 启用所有已禁用  |
+| 选项                   | 说明                |
+| -------------------- | ----------------- |
+| `-s, --skill <s>...` | 目标技能（`'*'` 表示全部）  |
+| `--all`              | 禁用所有已启用 / 启用所有已禁用 |
 
 ```bash
 agents-skills disable pdf      # 禁用指定技能
@@ -145,12 +141,11 @@ agents-skills enable  --all    # 启用全部已禁用技能
 agents-skills agent [agents...] (--link | --unlink | --status) [options]
 ```
 
-| 选项                    | 说明                                |
-| --------------------- | --------------------------------- |
-| `-p, --project <dir>` | 操作指定项目目录的技能目录（默认全局）               |
-| `--link`              | 把 agent 技能目录链接到规范目录（存量内容自动并入）      |
-| `--unlink`            | 解除 agent 与规范目录的链接（已并入内容留在规范目录）     |
-| `--status`            | 查看链接状态（只读）                        |
+| 选项         | 说明                            |
+| ---------- | ----------------------------- |
+| `--link`   | 把 agent 技能目录链接到规范目录（存量内容自动并入）  |
+| `--unlink` | 解除 agent 与规范目录的链接（已并入内容留在规范目录） |
+| `--status` | 查看链接状态（只读）                    |
 
 `--link`/`--unlink`/`--status` 互斥，须指定其一。`--status` 区分两种可见状态：
 原生读取规范目录的 agent（Codex、Cursor、Warp 等）标记 `(canonical dir)`，符号
@@ -165,7 +160,7 @@ agent 默认为自动探测结果，`'*'` 表示全部。
 
 - 其他情况：先并入内容再建立链接 —— 技能目录移入规范目录，非技能条目移入规范
   目录内的 `.misc/<agent>/`（点目录，不会被误判为已安装技能），随后 agent 目录
-  被链接替换。项目级还会写入 `.misc/.gitignore`，让被隔离的文件不进版本控制。
+  被链接替换。
 
 - 同名冲突一律丢弃 agent 侧副本、保留已有副本：规范目录副本优先，已禁用
   （`disabled-skills`）的技能保持禁用、不被重新导入；指向规范目录的旧模型

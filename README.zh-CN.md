@@ -26,8 +26,8 @@ agents-skills list                    # 查看已安装技能
 agents-skills agent --status          # 查看各 agent 的链接状态
 ```
 
-核心是链接：技能只在规范目录保存一份（项目级 `.agents/skills/` 或全局级
-`~/.agents/skills/`），`agent --link` 为每个已安装的 agent 在其技能目录创建指向
+核心是链接：技能只在规范目录保存一份（`~/.agents/skills/`），`agent --link` 为
+每个已安装的 agent 在其技能目录创建指向
 规范目录的符号链接；之后 `add` 安装的技能所有 agent 立即可见，无需同步。
 
 ## 功能说明
@@ -45,8 +45,9 @@ agents-skills disable pdf                          # 禁用（移出规范目录
 agents-skills enable pdf                           # 重新启用（disable 的逆操作）
 ```
 
-- 默认操作全局作用域 `~/.agents/skills`;`--project <目录>` 切换到项目级（在指定
-  目录的 `.agents/skills` 下，当前目录写 `--project .`）。
+- 所有命令只操作规范目录 `~/.agents/skills`。
+- `add` 只做新增：若同名技能已安装（**无论启用还是禁用**），会报告 `skipped` 并
+  原样保留，绝不静默覆盖本地改动。想替换请先 `remove` 再 `add`。
 - 链接会把 agent 技能目录中的存量内容并入规范目录，且这是单向操作：技能目录移入
   规范目录，非技能条目移入规范目录内的 `.misc/<agent>/`，同名冲突一律丢弃 agent
   侧副本、保留已有副本（规范目录优先；已禁用 `disabled-skills` 的技能保持禁用、
@@ -97,11 +98,10 @@ HTTPS 来源直接下载并解压(zip / tar / tar.gz 压缩包,或单个文件�
 
 ### 安装位置
 
-- **规范目录（唯一真实副本）** —— 项目级 `./.agents/skills/<name>`，全局级
-  `~/.agents/skills/<name>`。
+- **规范目录（唯一真实副本）** —— `~/.agents/skills/<name>`；被禁用的技能位于
+  `~/.agents/disabled-skills/<name>`。
 - **Agent 集成** —— 不原生读取规范目录的 agent 获得目录级符号链接：
-  `.claude/skills` → `../.agents/skills`（项目）或 `~/.claude/skills` →
-  `~/.agents/skills`（全局）。
+  `~/.claude/skills` → `~/.agents/skills`，其余 agent 同理。
 
 ## 命令速查表
 

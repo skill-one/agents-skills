@@ -25,8 +25,6 @@ use crate::core::source::Source;
 pub struct AddRequest {
     /// Source string (local path, GitHub `owner/repo`, git URL, or download URL).
     pub source: String,
-    /// Install globally (user-level, `~/.agents/skills`) instead of project-level.
-    pub global: bool,
     /// `"*"` or specific skill names; empty = all discovered skills.
     pub skills: Vec<String>,
     /// List available skills without installing anything.
@@ -56,15 +54,6 @@ impl AddRequest {
     }
 }
 
-/// Request for [`Manager::list`].
-///
-/// `Default` lists project-scope skills.
-#[derive(Debug, Clone, Default)]
-pub struct ListRequest {
-    /// List global skills instead of project skills.
-    pub global: bool,
-}
-
 /// Request for [`Manager::remove`].
 ///
 /// `Default` is a no-op that only reports installed names — set `skills` or `all` to
@@ -73,8 +62,6 @@ pub struct ListRequest {
 pub struct RemoveRequest {
     /// Skill names to remove (the CLI merges positional args and `--skill` here).
     pub skills: Vec<String>,
-    /// Remove global skills instead of project skills.
-    pub global: bool,
     /// Remove all installed skills.
     pub all: bool,
 }
@@ -86,8 +73,6 @@ pub struct RemoveRequest {
 pub struct AgentRequest {
     /// `"*"` or specific agent names; empty = auto-detect installed agents.
     pub agents: Vec<String>,
-    /// Link global skills dirs instead of project ones.
-    pub global: bool,
     /// Unlink (disconnect) the agents' skills dirs instead of linking them.
     pub unlink: bool,
 }
@@ -100,8 +85,6 @@ pub struct AgentRequest {
 pub struct DisableRequest {
     /// Skill names to disable (the CLI merges positional args and `--skill` here).
     pub skills: Vec<String>,
-    /// Disable global skills instead of project skills.
-    pub global: bool,
     /// Disable all currently enabled skills.
     pub all: bool,
 }
@@ -114,8 +97,6 @@ pub struct DisableRequest {
 pub struct EnableRequest {
     /// Skill names to enable (the CLI merges positional args and `--skill` here).
     pub skills: Vec<String>,
-    /// Enable global skills instead of project skills.
-    pub global: bool,
     /// Enable all currently disabled skills.
     pub all: bool,
 }
@@ -136,6 +117,9 @@ pub struct AddOutcome {
     pub selected: Vec<Skill>,
     /// Successfully installed skills.
     pub installed: Vec<InstallSuccess>,
+    /// Selected skills left untouched because a skill of the same name is
+    /// already installed (enabled or disabled) — `add` never overwrites.
+    pub skipped: Vec<String>,
     /// Failed installations.
     pub failed: Vec<InstallFailure>,
     /// Whether this was a `--list` request.
@@ -196,8 +180,6 @@ pub struct AgentStatus {
 /// Result of [`Manager::agent`].
 #[derive(Debug)]
 pub struct AgentOutcome {
-    /// Whether the links used global scope.
-    pub global: bool,
     /// Per-agent link results.
     pub results: Vec<AgentLinkResult>,
 }

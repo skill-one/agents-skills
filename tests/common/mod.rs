@@ -30,10 +30,13 @@ impl TestProject {
         self.dir.path()
     }
 
-    /// Return an `agents-skills` command with `current_dir` already set.
+    /// Return an `agents-skills` command pointed at the scratch environment:
+    /// `HOME` is the temp dir (so the canonical dir is `<tmp>/.agents/skills`)
+    /// and `current_dir` is the same temp dir.
     pub fn skills(&self) -> Command {
         let mut cmd = Command::cargo_bin("agents-skills").expect("resolve agents-skills binary");
         cmd.current_dir(self.path());
+        cmd.env("HOME", self.path());
         cmd
     }
 

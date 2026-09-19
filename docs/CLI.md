@@ -26,12 +26,9 @@ Global option: `-v, --version` prints the version.
 
 Commands have no aliases (a minimal interface — full names only).
 
-General notes: skills live in the canonical directory (global
-`~/.agents/skills` or project `.agents/skills`). Commands operate on the
-**global** scope by default; `-p/--project <dir>` switches to the **project**
-scope — the value is required and the directory must already exist, and
-commands then operate on the `.agents/skills` inside it (use `--project .` for
-the current directory).
+General notes: skills live in exactly one place — the canonical directory
+`~/.agents/skills` — and every command operates on it. Disabled skills are
+parked in the sibling `~/.agents/disabled-skills`.
 
 ## add
 
@@ -41,18 +38,20 @@ Install a skill pack from a local path, a Git repository, or an HTTPS endpoint.
 agents-skills add <source...> [options]
 ```
 
-| Option                | Description                                                |
-| --------------------- | ---------------------------------------------------------- |
-| `-p, --project <dir>` | Install into the given project directory (default: global) |
-| `-s, --skill <s>...`  | Skill names to install (`'*'` = all)                       |
-| `-l, --list`          | Only list available skills, do not install                 |
+| Option               | Description                                |
+| -------------------- | ------------------------------------------ |
+| `-s, --skill <s>...` | Skill names to install (`'*'` = all)       |
+| `-l, --list`         | Only list available skills, do not install |
 
 ```bash
-agents-skills add anthropics/skills               # install into the global ~/.agents/skills
-agents-skills add anthropics/skills --project .   # install into the current project's .agents/skills
+agents-skills add anthropics/skills               # install into ~/.agents/skills
 agents-skills add anthropics/skills@pdf           # install only the specified skill
 agents-skills add anthropics/skills -l            # only list available skills
 ```
+
+`add` only ever adds and never overwrites: a skill whose name is already
+installed — enabled *or* disabled — is reported as `skipped` and left as is. To
+replace an installed skill, `remove` it first.
 
 After installing, run `agents-skills agent --link` to make the skills visible
 to agents (`add` does not link automatically).
@@ -65,11 +64,10 @@ Remove installed skills from the canonical directory.
 agents-skills remove [skills...] [options]
 ```
 
-| Option                | Description                                               |
-| --------------------- | --------------------------------------------------------- |
-| `-p, --project <dir>` | Remove from the given project directory (default: global) |
-| `-s, --skill <s>...`  | Skills to remove (`'*'` = all)                            |
-| `--all`               | Remove all skills (including disabled ones)               |
+| Option               | Description                                 |
+| -------------------- | ------------------------------------------- |
+| `-s, --skill <s>...` | Skills to remove (`'*'` = all)              |
+| `--all`              | Remove all skills (including disabled ones) |
 
 ```bash
 agents-skills remove pdf      # remove the specified skill
@@ -85,15 +83,13 @@ List installed skills with each skill's description and install time. Use
 agents-skills list [options]
 ```
 
-| Option                | Description                                                  |
-| --------------------- | ------------------------------------------------------------ |
-| `-p, --project <dir>` | List skills in the given project directory (default: global) |
-| `--json`              | JSON output (machine-readable)                               |
+| Option   | Description                    |
+| -------- | ------------------------------ |
+| `--json` | JSON output (machine-readable) |
 
 ```bash
 agents-skills list
 agents-skills list --json
-agents-skills list --project .
 ```
 
 Each skill is printed on two lines — name and description, then
@@ -133,11 +129,10 @@ agents-skills disable [skills...] [options]
 agents-skills enable  [skills...] [options]
 ```
 
-| Option                | Description                                                  |
-| --------------------- | ------------------------------------------------------------ |
-| `-p, --project <dir>` | Project scope: the given project directory (default: global) |
-| `-s, --skill <s>...`  | Target skills (`'*'` = all)                                  |
-| `--all`               | Disable all enabled / enable all disabled                    |
+| Option               | Description                               |
+| -------------------- | ----------------------------------------- |
+| `-s, --skill <s>...` | Target skills (`'*'` = all)               |
+| `--all`              | Disable all enabled / enable all disabled |
 
 ```bash
 agents-skills disable pdf      # disable the specified skill
@@ -155,12 +150,11 @@ directory.
 agents-skills agent [agents...] (--link | --unlink | --status) [options]
 ```
 
-| Option                | Description                                                                                    |
-| --------------------- | ---------------------------------------------------------------------------------------------- |
-| `-p, --project <dir>` | Operate on the skills directory under the given project directory (default: global)             |
-| `--link`              | Link the agent's skills directory to the canonical directory (pre-existing content is adopted)  |
-| `--unlink`            | Unlink the agent from the canonical directory (adopted content stays in the canonical dir)      |
-| `--status`            | Show link status (read-only)                                                                    |
+| Option     | Description                                                                                    |
+| ---------- | ---------------------------------------------------------------------------------------------- |
+| `--link`   | Link the agent's skills directory to the canonical directory (pre-existing content is adopted)  |
+| `--unlink` | Unlink the agent from the canonical directory (adopted content stays in the canonical dir)      |
+| `--status` | Show link status (read-only)                                                                    |
 
 `--link`, `--unlink`, and `--status` are mutually exclusive; exactly one must
 be given. `--status` distinguishes two kinds of visibility: agents that read
@@ -180,8 +174,7 @@ How linking handles pre-existing content (adoption is one-way):
   directories are moved into the canonical directory, non-skill entries are
   moved into `.misc/<agent>/` inside it (a dot-dir, so they are never mistaken
   for installed skills), and only then is the agent directory replaced by the
-  link. In project scope a `.misc/.gitignore` keeps quarantined files out of
-  version control.
+  link.
 
 - Name clashes are dropped in favour of the existing copy: the canonical copy
   wins, and a name disabled in `disabled-skills` stays disabled instead of

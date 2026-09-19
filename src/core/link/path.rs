@@ -7,21 +7,14 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::core::agents::{Agent, Env};
-
 pub(crate) fn entry_name(entry: &fs::DirEntry) -> String {
     entry.file_name().to_string_lossy().into_owned()
 }
 
-/// Whether the agent's root dir exists in this scope (project: first component of
-/// `skills_dir`; global: parent of the agent's skills dir).
-pub(crate) fn agent_root_exists(agent: &Agent, global: bool, env: &Env, agent_dir: &Path) -> bool {
-    if global {
-        agent_dir.parent().map(|p| p.exists()).unwrap_or(false)
-    } else {
-        let root = agent.skills_dir.split('/').next().unwrap_or("");
-        env.cwd.join(root).exists()
-    }
+/// Whether the agent's root dir exists — the parent of its skills dir, e.g.
+/// `~/.claude` for `~/.claude/skills`.
+pub(crate) fn agent_root_exists(agent_dir: &Path) -> bool {
+    agent_dir.parent().map(|p| p.exists()).unwrap_or(false)
 }
 
 /// Whether `link` (a symlink) resolves to `target`.

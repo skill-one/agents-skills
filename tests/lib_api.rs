@@ -4,8 +4,8 @@
 use std::path::{Path, PathBuf};
 
 use agents_skills::{
-    AddRequest, AgentRequest, DisableRequest, EnableRequest, LinkOutcome, ListRequest, Manager,
-    RemoveRequest, SkillsError,
+    AddRequest, AgentRequest, DisableRequest, EnableRequest, LinkOutcome, Manager, RemoveRequest,
+    SkillsError,
 };
 
 fn write_skill_source(root: &Path, rel_dir: &str, name: &str) -> PathBuf {
@@ -16,17 +16,23 @@ fn write_skill_source(root: &Path, rel_dir: &str, name: &str) -> PathBuf {
     dir
 }
 
+/// A hermetic manager: skills live under `home`, and `cwd` is a scratch dir so
+/// cwd-based agent detection never probes the real working directory.
+fn manager_at(tmp: &tempfile::TempDir) -> (Manager, PathBuf) {
+    let home = tmp.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let manager = Manager::builder()
+        .home(home.clone())
+        .config(tmp.path().join("config"))
+        .cwd(tmp.path().join("project"))
+        .build();
+    (manager, home)
+}
+
 #[test]
 fn lib_add_list_remove_roundtrip() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let cwd = tmp.path().join("project");
-    std::fs::create_dir_all(&cwd).unwrap();
-
-    let manager = Manager::builder()
-        .home(tmp.path().join("home"))
-        .config(tmp.path().join("config"))
-        .cwd(cwd.clone())
-        .build();
+    let (manager, home) = manager_at(&tmp);
 
     // Add a local skill.
     let src = write_skill_source(tmp.path(), "src", "pdf");
@@ -39,11 +45,12 @@ fn lib_add_list_remove_roundtrip() {
 
     assert_eq!(outcome.skills.len(), 1);
     assert_eq!(outcome.installed.len(), 1);
+    assert!(outcome.skipped.is_empty());
     assert!(outcome.failed.is_empty());
-    assert!(cwd.join(".agents/skills/pdf/SKILL.md").exists());
+    assert!(home.join(".agents/skills/pdf/SKILL.md").exists());
 
     // List finds it.
-    let listed = manager.list(&ListRequest::default()).unwrap();
+    let listed = manager.list().unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].name, "pdf");
     assert!(listed[0].enabled);
@@ -56,41 +63,60 @@ fn lib_add_list_remove_roundtrip() {
         })
         .unwrap();
     assert_eq!(removed.removed, vec!["pdf".to_string()]);
-    assert!(!cwd.join(".agents/skills/pdf").exists());
+    assert!(!home.join(".agents/skills/pdf").exists());
 }
 
 #[test]
-fn lib_add_global_uses_home() {
+fn lib_add_skips_an_already_installed_skill() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let home = tmp.path().join("home");
-    let cwd = tmp.path().join("project");
-    std::fs::create_dir_all(&home).unwrap();
-    std::fs::create_dir_all(&cwd).unwrap();
-
-    let manager = Manager::builder()
-        .home(home.clone())
-        .config(tmp.path().join("config"))
-        .cwd(cwd.clone())
-        .build();
+    let (manager, home) = manager_at(&tmp);
 
     let src = write_skill_source(tmp.path(), "src", "pdf");
+    assert_eq!(
+        manager
+            .add(&AddRequest {
+                source: src.display().to_string(),
+                ..Default::default()
+            })
+            .unwrap()
+            .installed
+            .len(),
+        1
+    );
+
+    // A second install of the same name is skipped, not overwritten.
     let outcome = manager
         .add(&AddRequest {
             source: src.display().to_string(),
-            global: true,
             ..Default::default()
         })
         .unwrap();
-
-    assert_eq!(outcome.installed.len(), 1);
+    assert!(outcome.installed.is_empty());
+    assert_eq!(outcome.skipped, vec!["pdf".to_string()]);
     assert!(home.join(".agents/skills/pdf/SKILL.md").exists());
-    assert!(!cwd.join(".agents/skills/pdf").exists());
+
+    // A *disabled* skill is still installed: still skipped.
+    manager
+        .disable(&DisableRequest {
+            skills: vec!["pdf".to_string()],
+            ..Default::default()
+        })
+        .unwrap();
+    let outcome = manager
+        .add(&AddRequest {
+            source: src.display().to_string(),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(outcome.skipped, vec!["pdf".to_string()]);
+    assert!(!home.join(".agents/skills/pdf").exists());
+    assert!(home.join(".agents/disabled-skills/pdf/SKILL.md").exists());
 }
 
 #[test]
 fn lib_invalid_agent_returns_error() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let manager = Manager::builder().cwd(tmp.path().join("project")).build();
+    let (manager, _home) = manager_at(&tmp);
 
     let err = manager
         .agent(&AgentRequest {
@@ -104,7 +130,7 @@ fn lib_invalid_agent_returns_error() {
 #[test]
 fn lib_missing_local_path_returns_error() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let manager = Manager::builder().cwd(tmp.path().join("project")).build();
+    let (manager, _home) = manager_at(&tmp);
 
     let err = manager
         .add(&AddRequest {
@@ -118,10 +144,8 @@ fn lib_missing_local_path_returns_error() {
 #[test]
 fn lib_list_json_shape() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let cwd = tmp.path().join("project");
-    std::fs::create_dir_all(&cwd).unwrap();
+    let (manager, _home) = manager_at(&tmp);
 
-    let manager = Manager::builder().cwd(cwd).build();
     let src = write_skill_source(tmp.path(), "src", "pdf");
     manager
         .add(&AddRequest {
@@ -130,7 +154,7 @@ fn lib_list_json_shape() {
         })
         .unwrap();
 
-    let listed = manager.list(&ListRequest::default()).unwrap();
+    let listed = manager.list().unwrap();
     assert_eq!(listed[0].name, "pdf");
     assert_eq!(listed[0].description, "does pdf");
     let json = serde_json::to_string_pretty(&listed).unwrap();
@@ -144,9 +168,7 @@ fn lib_list_json_shape() {
 fn lib_list_collapses_block_scalar_description() {
     // A YAML block scalar spans lines; the listed description is one line.
     let tmp = tempfile::TempDir::new().unwrap();
-    let cwd = tmp.path().join("project");
-    std::fs::create_dir_all(&cwd).unwrap();
-    let manager = Manager::builder().cwd(cwd).build();
+    let (manager, _home) = manager_at(&tmp);
 
     let src = tmp.path().join("src");
     std::fs::create_dir_all(&src).unwrap();
@@ -162,66 +184,53 @@ fn lib_list_collapses_block_scalar_description() {
         })
         .unwrap();
 
-    let listed = manager.list(&ListRequest::default()).unwrap();
+    let listed = manager.list().unwrap();
     assert_eq!(listed[0].description, "Two lines");
 }
 
 #[test]
 fn lib_agent_status_reports_canonical_and_linked() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let home = tmp.path().join("home");
-    let cwd = tmp.path().join("project");
-    std::fs::create_dir_all(&home).unwrap();
-    std::fs::create_dir_all(&cwd).unwrap();
+    let (manager, home) = manager_at(&tmp);
 
-    // cline is native at global scope too (global dir ~/.agents/skills).
+    // cline's skills dir is ~/.agents/skills itself → canonical, never linked.
     std::fs::create_dir_all(home.join(".cline")).unwrap();
-    // codex is universal at PROJECT scope but reads ~/.codex/skills globally:
-    // installed but not canonical until explicitly linked.
+    // codex reads ~/.codex/skills: installed but not canonical until linked.
     std::fs::create_dir_all(home.join(".codex")).unwrap();
-    // Installed non-universal agent (trae detects ~/.trae) → linked after linking.
+    // Installed non-native agent (trae detects ~/.trae) → linked after linking.
     std::fs::create_dir_all(home.join(".trae")).unwrap();
-
-    let manager = Manager::builder()
-        .home(home.clone())
-        .config(tmp.path().join("config"))
-        .cwd(cwd.clone())
-        .build();
 
     manager
         .agent(&AgentRequest {
             agents: vec!["trae".to_string()],
-            global: true,
             ..Default::default()
         })
         .unwrap();
 
-    let statuses = manager.agent_status(true);
+    let statuses = manager.agent_status();
     let trae = statuses.iter().find(|s| s.name == "trae").unwrap();
     assert!(!trae.canonical);
     assert!(trae.linked);
     let cline = statuses.iter().find(|s| s.name == "cline").unwrap();
     assert!(cline.canonical);
     assert!(cline.linked);
-    // Scope-aware: codex is NOT canonical globally and starts unlinked.
+    // codex is NOT canonical and starts unlinked.
     let codex = statuses.iter().find(|s| s.name == "codex").unwrap();
     assert!(!codex.canonical);
     assert!(!codex.linked);
     // Uninstalled agents (neither installed nor linked) are not reported.
     assert!(statuses.iter().all(|s| s.name != "claude-code"));
-    // Uninstalled universal agents are not reported either.
     assert!(statuses.iter().all(|s| s.name != "amp"));
 
-    // Linking codex at global scope connects its vendor dir.
+    // Linking codex connects its own dir.
     manager
         .agent(&AgentRequest {
             agents: vec!["codex".to_string()],
-            global: true,
             ..Default::default()
         })
         .unwrap();
     assert!(home.join(".codex/skills").is_symlink());
-    let statuses = manager.agent_status(true);
+    let statuses = manager.agent_status();
     let codex = statuses.iter().find(|s| s.name == "codex").unwrap();
     assert!(!codex.canonical);
     assert!(codex.linked);
@@ -230,10 +239,7 @@ fn lib_agent_status_reports_canonical_and_linked() {
 #[test]
 fn lib_agent_status_reports_internal_skills_for_unlinked_agents() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let home = tmp.path().join("home");
-    let cwd = tmp.path().join("project");
-    std::fs::create_dir_all(&home).unwrap();
-    std::fs::create_dir_all(&cwd).unwrap();
+    let (manager, home) = manager_at(&tmp);
 
     // trae is detected via ~/.trae and not linked; it holds a skill and a stray
     // file (classified the same way linking classifies them).
@@ -245,13 +251,7 @@ fn lib_agent_status_reports_internal_skills_for_unlinked_agents() {
     .unwrap();
     std::fs::write(home.join(".trae/skills/notes.txt"), "x").unwrap();
 
-    let manager = Manager::builder()
-        .home(home.clone())
-        .config(tmp.path().join("config"))
-        .cwd(cwd.clone())
-        .build();
-
-    let statuses = manager.agent_status(true);
+    let statuses = manager.agent_status();
     let trae = statuses.iter().find(|s| s.name == "trae").unwrap();
     assert!(!trae.canonical);
     assert!(!trae.linked);
@@ -262,10 +262,7 @@ fn lib_agent_status_reports_internal_skills_for_unlinked_agents() {
 #[test]
 fn lib_agent_link_adopts_and_unlink_keeps_content() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let home = tmp.path().join("home");
-    let cwd = tmp.path().join("project");
-    std::fs::create_dir_all(&home).unwrap();
-    std::fs::create_dir_all(&cwd).unwrap();
+    let (manager, home) = manager_at(&tmp);
 
     // trae is detected via ~/.trae; give it a skill and a stray file.
     std::fs::create_dir_all(home.join(".trae/skills/docx")).unwrap();
@@ -276,17 +273,10 @@ fn lib_agent_link_adopts_and_unlink_keeps_content() {
     .unwrap();
     std::fs::write(home.join(".trae/skills/README.txt"), "x").unwrap();
 
-    let manager = Manager::builder()
-        .home(home.clone())
-        .config(tmp.path().join("config"))
-        .cwd(cwd.clone())
-        .build();
-
     // Link: the skill is adopted, the stray file is quarantined, the dir becomes a link.
     let outcome = manager
         .agent(&AgentRequest {
             agents: vec!["trae".to_string()],
-            global: true,
             ..Default::default()
         })
         .unwrap();
@@ -310,7 +300,7 @@ fn lib_agent_link_adopts_and_unlink_keeps_content() {
     );
 
     // Status reports the agent as linked.
-    let statuses = manager.agent_status(true);
+    let statuses = manager.agent_status();
     let trae = statuses.iter().find(|s| s.name == "trae").unwrap();
     assert!(trae.linked);
 
@@ -318,7 +308,6 @@ fn lib_agent_link_adopts_and_unlink_keeps_content() {
     let outcome = manager
         .agent(&AgentRequest {
             agents: vec!["trae".to_string()],
-            global: true,
             unlink: true,
         })
         .unwrap();
@@ -334,20 +323,18 @@ fn lib_agent_link_adopts_and_unlink_keeps_content() {
 fn lib_agent_status_orders_canonical_first() {
     let tmp = tempfile::TempDir::new().unwrap();
     let home = tmp.path().join("home");
-    let cwd = tmp.path().join("project");
     std::fs::create_dir_all(&home).unwrap();
-    std::fs::create_dir_all(&cwd).unwrap();
 
-    // At global scope cline is canonical (global dir ~/.agents/skills);
-    // claude-code (non-canonical) precedes cline in the static agent table, so
-    // this fixture proves the canonical-first ordering rather than a coincidence.
+    // cline is canonical (its skills dir is ~/.agents/skills); claude-code
+    // (non-canonical) precedes cline in the static agent table, so this fixture
+    // proves the canonical-first ordering rather than a coincidence.
     std::fs::create_dir_all(home.join(".claude")).unwrap();
     std::fs::create_dir_all(home.join(".cline")).unwrap();
 
     let manager = Manager::builder()
         .home(home.clone())
         .config(tmp.path().join("config"))
-        .cwd(cwd.clone())
+        .cwd(tmp.path().join("project"))
         // Hermetic: never probe system locations (e.g. /Applications/ZCode.app).
         .probe_system_dirs(false)
         .build();
@@ -355,12 +342,11 @@ fn lib_agent_status_orders_canonical_first() {
     manager
         .agent(&AgentRequest {
             agents: vec!["claude-code".to_string()],
-            global: true,
             ..Default::default()
         })
         .unwrap();
 
-    let statuses = manager.agent_status(true);
+    let statuses = manager.agent_status();
     let names: Vec<&str> = statuses.iter().map(|s| s.name.as_str()).collect();
     // canonical agents come first; the rest keep table order.
     assert_eq!(names, vec!["cline", "claude-code"]);
@@ -369,14 +355,7 @@ fn lib_agent_status_orders_canonical_first() {
 #[test]
 fn lib_disable_then_enable_roundtrip() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let cwd = tmp.path().join("project");
-    std::fs::create_dir_all(&cwd).unwrap();
-
-    let manager = Manager::builder()
-        .home(tmp.path().join("home"))
-        .config(tmp.path().join("config"))
-        .cwd(cwd.clone())
-        .build();
+    let (manager, home) = manager_at(&tmp);
 
     // Add a local skill.
     let src = write_skill_source(tmp.path(), "src", "pdf");
@@ -397,11 +376,11 @@ fn lib_disable_then_enable_roundtrip() {
     assert_eq!(disabled.disabled, vec!["pdf".to_string()]);
     assert!(disabled.already.is_empty());
     assert!(disabled.missing.is_empty());
-    assert!(!cwd.join(".agents/skills/pdf").exists());
-    assert!(cwd.join(".agents/disabled-skills/pdf/SKILL.md").exists());
+    assert!(!home.join(".agents/skills/pdf").exists());
+    assert!(home.join(".agents/disabled-skills/pdf/SKILL.md").exists());
 
     // list reports the skill as disabled.
-    let listed = manager.list(&ListRequest::default()).unwrap();
+    let listed = manager.list().unwrap();
     assert_eq!(listed.len(), 1);
     assert!(!listed[0].enabled);
 
@@ -413,24 +392,17 @@ fn lib_disable_then_enable_roundtrip() {
         })
         .unwrap();
     assert_eq!(enabled.enabled, vec!["pdf".to_string()]);
-    assert!(cwd.join(".agents/skills/pdf/SKILL.md").exists());
-    assert!(!cwd.join(".agents/disabled-skills/pdf").exists());
+    assert!(home.join(".agents/skills/pdf/SKILL.md").exists());
+    assert!(!home.join(".agents/disabled-skills/pdf").exists());
 
-    let listed = manager.list(&ListRequest::default()).unwrap();
+    let listed = manager.list().unwrap();
     assert!(listed[0].enabled);
 }
 
 #[test]
 fn lib_disable_enable_are_idempotent() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let cwd = tmp.path().join("project");
-    std::fs::create_dir_all(&cwd).unwrap();
-
-    let manager = Manager::builder()
-        .home(tmp.path().join("home"))
-        .config(tmp.path().join("config"))
-        .cwd(cwd.clone())
-        .build();
+    let (manager, _home) = manager_at(&tmp);
 
     let src = write_skill_source(tmp.path(), "src", "pdf");
     manager
@@ -482,37 +454,4 @@ fn lib_disable_enable_are_idempotent() {
     assert!(missing.disabled.is_empty());
     assert!(missing.already.is_empty());
     assert_eq!(missing.missing, vec!["nope".to_string()]);
-}
-
-#[test]
-fn lib_disable_global_scope_moves_home_skill() {
-    let tmp = tempfile::TempDir::new().unwrap();
-    let home = tmp.path().join("home");
-    std::fs::create_dir_all(&home).unwrap();
-
-    let manager = Manager::builder()
-        .home(home.clone())
-        .config(tmp.path().join("config"))
-        .cwd(tmp.path().join("project"))
-        .build();
-
-    let src = write_skill_source(tmp.path(), "src", "pdf");
-    manager
-        .add(&AddRequest {
-            source: src.display().to_string(),
-            global: true,
-            ..Default::default()
-        })
-        .unwrap();
-
-    manager
-        .disable(&DisableRequest {
-            skills: vec!["pdf".to_string()],
-            global: true,
-            ..Default::default()
-        })
-        .unwrap();
-
-    assert!(!home.join(".agents/skills/pdf").exists());
-    assert!(home.join(".agents/disabled-skills/pdf/SKILL.md").exists());
 }

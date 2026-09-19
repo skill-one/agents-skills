@@ -21,9 +21,9 @@ fn agent_requires_mode_flag() {
 #[test]
 fn agent_link_creates_relative_dir_symlink() {
     let p = TestProject::new();
-    // claude-code links even without .claude/ (historical exception).
+    // claude-code links even without ~/.claude (historical exception).
     p.skills()
-        .args(["agent", "--link", "claude-code", "--project", "."])
+        .args(["agent", "--link", "claude-code"])
         .assert()
         .success()
         .stdout(predicate::str::contains("linked"));
@@ -45,7 +45,7 @@ fn agent_link_adopts_existing_skills() {
 
     // Linking adopts the existing skill into the canonical dir.
     p.skills()
-        .args(["agent", "--link", "claude-code", "--project", "."])
+        .args(["agent", "--link", "claude-code"])
         .assert()
         .success()
         .stdout(predicate::str::contains("linked"))
@@ -65,7 +65,7 @@ fn agent_link_quarantines_non_skill_files() {
     std::fs::write(p.path().join(".claude/skills/README.txt"), "x").unwrap();
 
     p.skills()
-        .args(["agent", "--link", "claude-code", "--project", "."])
+        .args(["agent", "--link", "claude-code"])
         .assert()
         .success()
         .stdout(predicate::str::contains("linked"))
@@ -85,12 +85,12 @@ fn agent_link_quarantines_non_skill_files() {
 fn agent_unlink_restores_real_dir() {
     let p = TestProject::new();
     p.skills()
-        .args(["agent", "--link", "claude-code", "--project", "."])
+        .args(["agent", "--link", "claude-code"])
         .assert()
         .success();
 
     p.skills()
-        .args(["agent", "--unlink", "claude-code", "--project", "."])
+        .args(["agent", "--unlink", "claude-code"])
         .assert()
         .success()
         .stdout(predicate::str::contains("unlinked"));
@@ -108,13 +108,13 @@ fn agent_link_unlink_roundtrip_keeps_adopted_skills() {
     std::fs::write(existing.join("SKILL.md"), "x").unwrap();
 
     p.skills()
-        .args(["agent", "--link", "claude-code", "--project", "."])
+        .args(["agent", "--link", "claude-code"])
         .assert()
         .success();
     assert!(p.path().join(".claude/skills").is_symlink());
 
     p.skills()
-        .args(["agent", "--unlink", "claude-code", "--project", "."])
+        .args(["agent", "--unlink", "claude-code"])
         .assert()
         .success();
 
@@ -130,15 +130,15 @@ fn agent_link_unlink_roundtrip_keeps_adopted_skills() {
 fn agent_status_prints_installed_agents_and_link_state() {
     let p = TestProject::new();
     p.skills()
-        .args(["agent", "--link", "claude-code", "--project", "."])
+        .args(["agent", "--link", "claude-code"])
         .assert()
         .success();
 
-    // CodeBuddy is detected via `.codebuddy` in the cwd: installed but not linked.
+    // CodeBuddy is detected via ~/.codebuddy: installed but not linked.
     std::fs::create_dir_all(p.path().join(".codebuddy")).unwrap();
 
     p.skills()
-        .args(["agent", "--status", "--project", "."])
+        .args(["agent", "--status"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Agent link status"))
@@ -151,7 +151,7 @@ fn agent_status_prints_installed_agents_and_link_state() {
 #[test]
 fn agent_status_classifies_unlinked_agents_private_content() {
     let p = TestProject::new();
-    // CodeBuddy is detected via `.codebuddy` in the cwd: installed but not linked.
+    // CodeBuddy is detected via ~/.codebuddy: installed but not linked.
     std::fs::create_dir_all(p.path().join(".codebuddy/skills/pdf")).unwrap();
     std::fs::write(
         p.path().join(".codebuddy/skills/pdf/SKILL.md"),
@@ -161,7 +161,7 @@ fn agent_status_classifies_unlinked_agents_private_content() {
     std::fs::write(p.path().join(".codebuddy/skills/README.txt"), "x").unwrap();
 
     p.skills()
-        .args(["agent", "--status", "--project", "."])
+        .args(["agent", "--status"])
         .assert()
         .success()
         .stdout(predicate::str::contains("CodeBuddy"))
@@ -178,7 +178,7 @@ fn agent_status_reports_manually_unlinked_agent() {
     std::fs::write(existing.join("SKILL.md"), "x").unwrap();
 
     p.skills()
-        .args(["agent", "--link", "claude-code", "--project", "."])
+        .args(["agent", "--link", "claude-code"])
         .assert()
         .success();
 
@@ -186,8 +186,7 @@ fn agent_status_reports_manually_unlinked_agent() {
     std::fs::remove_file(p.path().join(".claude/skills")).unwrap();
 
     p.skills()
-        .env("HOME", p.path())
-        .args(["agent", "--status", "--project", "."])
+        .args(["agent", "--status"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Claude Code"))
@@ -197,36 +196,32 @@ fn agent_status_reports_manually_unlinked_agent() {
 #[test]
 fn agent_status_orders_canonical_agents_first() {
     let p = TestProject::new();
-    // codex is canonical (universal); claude-code is non-canonical but linked.
-    std::fs::create_dir_all(p.path().join(".codex")).unwrap();
+    // cline is canonical (its skills dir is ~/.agents/skills); claude-code is
+    // non-canonical but linked, and precedes cline in the static agent table —
+    // so this proves the canonical-first ordering rather than a coincidence.
+    std::fs::create_dir_all(p.path().join(".cline")).unwrap();
     std::fs::create_dir_all(p.path().join(".claude")).unwrap();
     p.skills()
-        .args(["agent", "--link", "claude-code", "--project", "."])
+        .args(["agent", "--link", "claude-code"])
         .assert()
         .success();
 
-    let out = p
-        .skills()
-        .env("HOME", p.path())
-        .args(["agent", "--status", "--project", "."])
-        .output()
-        .unwrap();
+    let out = p.skills().args(["agent", "--status"]).output().unwrap();
     let stdout = String::from_utf8(out.stdout).unwrap();
-    // Same order as the library: canonical (universal) agents render first.
-    let codex = stdout.find("Codex").expect("codex listed");
+    // Same order as the library: canonical agents render first.
+    let cline = stdout.find("Cline").expect("cline listed");
     let claude = stdout.find("Claude Code").expect("claude listed");
-    assert!(codex < claude);
+    assert!(cline < claude);
 }
 
 #[test]
-fn agent_status_marks_universal_agents_as_canonical() {
+fn agent_status_marks_canonical_agents() {
     let p = TestProject::new();
-    // Warp is a universal agent (reads `.agents/skills` natively); pretend it's installed.
+    // Warp's skills dir is ~/.agents/skills itself; pretend it's installed.
     std::fs::create_dir_all(p.path().join(".warp")).unwrap();
 
     p.skills()
-        .env("HOME", p.path())
-        .args(["agent", "--status", "--project", "."])
+        .args(["agent", "--status"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Warp"))
@@ -234,14 +229,12 @@ fn agent_status_marks_universal_agents_as_canonical() {
 }
 
 #[test]
-fn agent_global_link_connects_project_universal_agent_vendor_dir() {
+fn agent_link_connects_vendor_specific_dir() {
     let p = TestProject::new();
-    // Antigravity is universal at project scope but reads the vendor-specific
-    // ~/.gemini/config/skills dir at GLOBAL scope (HOME is faked for hermeticity).
+    // Antigravity reads the vendor-specific ~/.gemini/config/skills dir.
     std::fs::create_dir_all(p.path().join(".gemini/config")).unwrap();
 
     p.skills()
-        .env("HOME", p.path())
         .args(["agent", "--link", "antigravity"])
         .assert()
         .success()
@@ -250,9 +243,8 @@ fn agent_global_link_connects_project_universal_agent_vendor_dir() {
     let link = p.path().join(".gemini/config/skills");
     assert!(link.is_symlink());
 
-    // Global status reports it as linked (not canonical).
+    // Status reports it as linked (not canonical).
     p.skills()
-        .env("HOME", p.path())
         .args(["agent", "--status"])
         .assert()
         .success()
@@ -260,7 +252,6 @@ fn agent_global_link_connects_project_universal_agent_vendor_dir() {
 
     // Unlink restores a real empty dir.
     p.skills()
-        .env("HOME", p.path())
         .args(["agent", "--unlink", "antigravity"])
         .assert()
         .success()
@@ -287,7 +278,7 @@ fn add_then_agent_link_ensures_agent_links() {
     let src = p.write_skill_source("my-skill", "pdf");
 
     p.skills()
-        .args(["add", src.to_str().unwrap(), "--project", "."])
+        .args(["add", src.to_str().unwrap()])
         .assert()
         .success()
         .stdout(predicate::str::contains("Installed 1 skill"));
@@ -298,7 +289,7 @@ fn add_then_agent_link_ensures_agent_links() {
 
     // `agent --link` exposes the canonical dir to the agent.
     p.skills()
-        .args(["agent", "--link", "claude-code", "--project", "."])
+        .args(["agent", "--link", "claude-code"])
         .assert()
         .success();
     let link = p.path().join(".claude/skills");
@@ -312,18 +303,15 @@ fn remove_skill_disappears_from_linked_agents() {
     let p = TestProject::new();
     let src = p.write_skill_source("my-skill", "pdf");
     p.skills()
-        .args(["add", src.to_str().unwrap(), "--project", "."])
+        .args(["add", src.to_str().unwrap()])
         .assert()
         .success();
     p.skills()
-        .args(["agent", "--link", "claude-code", "--project", "."])
+        .args(["agent", "--link", "claude-code"])
         .assert()
         .success();
 
-    p.skills()
-        .args(["remove", "pdf", "--project", "."])
-        .assert()
-        .success();
+    p.skills().args(["remove", "pdf"]).assert().success();
 
     p.assert_absent(".agents/skills/pdf");
     // The dir link remains, but the skill is gone (no dead per-skill links).

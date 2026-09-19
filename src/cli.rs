@@ -4,8 +4,6 @@
 //! all flags, centralized in this file for readability. No subcommand
 //! aliases — the full names are short and unambiguous (cargo-style minimalism).
 
-use std::path::PathBuf;
-
 use clap::{ArgGroup, Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
@@ -45,9 +43,6 @@ pub struct AddArgs {
     /// Source(s) to install
     #[arg(required = true)]
     pub source: Vec<String>,
-    /// Operate on project scope in the given directory instead of global
-    #[arg(short = 'p', long = "project", value_name = "DIR")]
-    pub project: Option<PathBuf>,
     /// Specify skill names to install (use '*' for all skills)
     #[arg(short = 's', long = "skill", num_args = 1..)]
     pub skill: Vec<String>,
@@ -60,9 +55,6 @@ pub struct AddArgs {
 pub struct RemoveArgs {
     /// Skill names to remove
     pub skills: Vec<String>,
-    /// Operate on project scope in the given directory instead of global
-    #[arg(short = 'p', long = "project", value_name = "DIR")]
-    pub project: Option<PathBuf>,
     /// Specify skills to remove (use '*' for all skills)
     #[arg(short = 's', long = "skill", num_args = 1..)]
     pub skill: Vec<String>,
@@ -73,9 +65,6 @@ pub struct RemoveArgs {
 
 #[derive(Debug, Args)]
 pub struct ListArgs {
-    /// Operate on project scope in the given directory instead of global
-    #[arg(short = 'p', long = "project", value_name = "DIR")]
-    pub project: Option<PathBuf>,
     /// Output as JSON (machine-readable, no ANSI codes)
     #[arg(long = "json")]
     pub json: bool,
@@ -85,9 +74,6 @@ pub struct ListArgs {
 pub struct DisableArgs {
     /// Skill names to disable
     pub skills: Vec<String>,
-    /// Operate on project scope in the given directory instead of global
-    #[arg(short = 'p', long = "project", value_name = "DIR")]
-    pub project: Option<PathBuf>,
     /// Specify skills to disable (use '*' for all skills)
     #[arg(short = 's', long = "skill", num_args = 1..)]
     pub skill: Vec<String>,
@@ -100,9 +86,6 @@ pub struct DisableArgs {
 pub struct EnableArgs {
     /// Skill names to enable
     pub skills: Vec<String>,
-    /// Operate on project scope in the given directory instead of global
-    #[arg(short = 'p', long = "project", value_name = "DIR")]
-    pub project: Option<PathBuf>,
     /// Specify skills to enable (use '*' for all skills)
     #[arg(short = 's', long = "skill", num_args = 1..)]
     pub skill: Vec<String>,
@@ -120,9 +103,6 @@ pub struct EnableArgs {
 pub struct AgentArgs {
     /// Agents to link/unlink (default: auto-detect installed agents; use '*' for all)
     pub agents: Vec<String>,
-    /// Operate on project scope in the given directory instead of global
-    #[arg(short = 'p', long = "project", value_name = "DIR")]
-    pub project: Option<PathBuf>,
     /// Link agents' skills dirs to the canonical dir
     #[arg(long = "link")]
     pub link: bool,

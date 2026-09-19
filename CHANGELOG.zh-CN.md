@@ -7,6 +7,50 @@
 
 英文版见 [CHANGELOG.md](CHANGELOG.md)。
 
+## [0.17.0] — 2026-09-19
+
+### 移除
+
+- **(breaking)** 项目级作用域。技能现在只存放在一个地方——规范目录
+  `~/.agents/skills`，所有命令都只操作它。六个子命令的 `-p/--project <目录>` 旗标
+  已移除，同时删除所有请求结构体上的 `global: bool` 字段、`AgentRequest.global`、
+  `AgentOutcome.global`、`Agent.list()` 的参数，以及 `ListRequest`
+  （`Manager::list` 现在不接收请求）。agent 表中的 `Agent.skills_dir` 已删除
+  （`agents.jsonl` 84 行），`is_universal()` 与 `ensure_universal_agents()` 删除，
+  `is_native` 现在只把解析出的技能目录与 `~/.agents/skills` 比较。项目级的
+  `.misc/.gitignore` 技巧随之消失——`$HOME` 不进版本控制。`discover` 中的
+  `AGENT_PROJECT_SKILL_DIRS` 与作用域无关（它是扫描**源仓库**时的容器目录列表），
+  予以保留。`PathSpec::Cwd` 与基于 cwd 的检测规则同样保留：它们描述的是"agent
+  装在哪"，而不是作用域。
+
+### 变更
+
+- **(breaking)** `add` 不再覆盖已安装的技能。被选中的技能若同名已安装（**无论
+  启用还是禁用**），会记录在新的 `AddOutcome.skipped` 中并原样保留。因此本地改动
+  永远不会被静默丢弃，对**已禁用**技能再安装也不会再产生重复副本（同一名字同时
+  存在于 `skills/` 与 `disabled-skills/`）。替换已安装技能请用 `remove` + `add`
+  —— 由于 `update` 已在 0.13.0 移除，这也正是更新技能的唯一方式。
+
+### 修复
+
+- (install) `disable`、`enable`、`remove` 现在能找到目录名未被规范化的技能。从
+  agent 目录并入的技能会保留原目录名，它未必等于
+  `sanitize_name(frontmatter name)`，而 `move_skill` / `get_canonical_path` /
+  `remove` 会对其二次 sanitize：导致 `disable` 报 IO 错误、`remove` 报成功却
+  什么都没删。
+
+- (link) 并入时的同名冲突现在会在**两个**技能目录中、跨"原始名/规范化名"一并
+  识别。此前 canonical 只按原始名检查，导致如 `pdf-master`（canonical）与
+  `PDF Master`（agent）两个目录以同一技能名并存。
+
+### 移除
+
+- (install) `install_skill` 中的"替换 + 回滚"路径。既然 `add` 不再覆盖，目标目录
+  不可能预先存在，`.old-*` 暂存目录及其回滚成为死代码。
+
+- (cli) `main.rs` 中的 `project directory not found` 检查与 `explicit_project_dir`，
+  以及 `Options: --project [dir], ...` 提示。
+
 ## [0.16.0] — 2026-09-19
 
 ### 新增
