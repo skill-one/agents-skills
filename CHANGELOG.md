@@ -7,7 +7,7 @@ the project adheres to [Semantic Versioning](https://semver.org/): while in
 
 For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
-## [Unreleased]
+## [0.18.0] — 2026-09-19
 
 ### Fixed
 
@@ -35,6 +35,23 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
   --all` can no longer leave a parked duplicate behind. A name is reported as
   removed only when something was actually deleted; a failed delete no longer
   counts as success.
+- fix(add): a skill whose name is not ASCII no longer collapses onto a shared
+  `unnamed-skill` slot. Slot-name folding keeps non-ASCII letters and digits
+  (`中文技能`) and every character a file name can hold (`c#`, `c++`), so two
+  differently named skills can no longer land on one directory and have the second
+  reported as an already-installed copy of the first. A name the fold empties
+  (`"***"`) falls back to a digest of the original name (`skill-3f9a2c1d`) — stable
+  per name, distinct across names. A directory an older version created under the
+  old placeholder is left as it is: `remove unnamed-skill` clears it.
+- fix(add): a slot name is now truncated to 255 **bytes** at a character
+  boundary. The previous character-based truncation could exceed the filesystem's
+  255-byte name limit — 255 CJK characters are 765 bytes — and fail the install
+  with `ENAMETOOLONG`.
+- fix(cli): the banner printed when no arguments are given no longer advertises an
+  `update` command, which never existed (running it printed
+  `Unknown command: update`).
+- fix(package): the crates.io package now really excludes `AGENTS.md`; the
+  `exclude` list named `AGENT.md` (a typo), so the file was packaged anyway.
 
 ### Changed
 
@@ -57,6 +74,11 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
   by normalization (`PDF Master` vs `pdf-master`) count as the same skill and are
   collapsed too. Previously such an `enable` / `disable` failed with
   `Directory not empty (os error 66)` and left the duplicate in place.
+- `remove` / `disable` / `enable` no longer advertise `-s '*'` as "all skills" in
+  their help text or in `docs/CLI.md` (both languages): only `add` implements that
+  selection, and `--all` is how the other three select everything.
+- deps: `zip` 2 → 8, `dirs` 6 → 7, and `noyalib` is pinned to `0.0.45` (the
+  previous `"0.0"` requirement did not guarantee a compatible patch release).
 
 ### Added
 
@@ -416,7 +438,13 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 - chore: upgrade git2 to 0.21 to fix RUSTSEC advisories.
 - chore: dual license, GitHub Actions, crates.io release metadata.
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/skill-one/agents-skills/compare/v0.17.0...v0.18.0
+[0.17.0]: https://github.com/skill-one/agents-skills/compare/v0.16.0...v0.17.0
+[0.16.0]: https://github.com/skill-one/agents-skills/compare/v0.15.0...v0.16.0
+[0.15.0]: https://github.com/skill-one/agents-skills/compare/v0.14.0...v0.15.0
+[0.14.0]: https://github.com/skill-one/agents-skills/compare/v0.13.0...v0.14.0
+[0.13.0]: https://github.com/skill-one/agents-skills/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/skill-one/agents-skills/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/skill-one/agents-skills/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/skill-one/agents-skills/compare/v0.12.0...v0.12.1

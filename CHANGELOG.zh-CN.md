@@ -7,7 +7,7 @@
 
 英文版见 [CHANGELOG.md](CHANGELOG.md)。
 
-## [Unreleased]
+## [0.18.0] — 2026-09-19
 
 ### 修复
 
@@ -29,6 +29,18 @@
 - fix(remove)：删除现在会清掉一个名字的所有副本——两个目录、两种拼写——而不再只按
   canonical 名字查找，因此 `remove --all` 不会再残留停放副本。也只在真的删掉东西时才把
   该名字计入已删除；此前删除失败会被静默计入成功。
+- fix(add)：名字非 ASCII 的技能不再塌缩到共享的 `unnamed-skill` 槽位。槽位名折叠现在
+  保留非 ASCII 字母数字（`中文技能`）以及文件名能容纳的字符（`c#`、`c++`），因此两个
+  不同的技能名不会再落到同一个目录、也就不会让第二个被报成第一个的"已安装副本"。折叠后
+  为空的名字（`"***"`）回退为原名的摘要（`skill-3f9a2c1d`）——同名稳定、异名不同。旧版本
+  用旧占位名创建的目录保持原样：用 `remove unnamed-skill` 清理即可。
+- fix(add)：槽位名现在按**字节**在字符边界处截断到 255 字节。此前按字符数截断，
+  可能超出文件系统的 255 字节名字上限——255 个 CJK 字符就是 765 字节——导致安装以
+  `ENAMETOOLONG` 失败。
+- fix(cli)：无参数时打印的 banner 不再宣传 `update` 命令，该命令从未存在（运行它只会
+  得到 `Unknown command: update`）。
+- fix(package)：crates.io 包现在真正排除了 `AGENTS.md`；此前的 `exclude` 写的是
+  `AGENT.md`（拼写错误），导致该文件仍被打进包中。
 
 ### 变更
 
@@ -46,6 +58,10 @@
   一个技能名始终只对应一个目录。目录名仅规范化不同的副本（`PDF Master` 与
   `pdf-master`）视为同一技能，同样会被合并。此前这种 `enable` / `disable` 会以
   `Directory not empty (os error 66)` 失败，并留下那个重复副本。
+- `remove` / `disable` / `enable` 的帮助文本与 `docs/CLI.md`（中英）不再宣称
+  `-s '*'` 表示"全部技能"：只有 `add` 实现了该选择，其余三个命令用 `--all` 选择全部。
+- deps：`zip` 2 → 8、`dirs` 6 → 7，并将 `noyalib` 固定为 `0.0.45`（此前的 `"0.0"`
+  约束并不保证取到兼容的补丁版本）。
 
 ### 新增
 
@@ -363,7 +379,13 @@
 - chore:升级 git2 至 0.21 以修复 RUSTSEC 安全通告。
 - chore:双许可证、GitHub Actions、crates.io 发布元数据。
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/skill-one/agents-skills/compare/v0.17.0...v0.18.0
+[0.17.0]: https://github.com/skill-one/agents-skills/compare/v0.16.0...v0.17.0
+[0.16.0]: https://github.com/skill-one/agents-skills/compare/v0.15.0...v0.16.0
+[0.15.0]: https://github.com/skill-one/agents-skills/compare/v0.14.0...v0.15.0
+[0.14.0]: https://github.com/skill-one/agents-skills/compare/v0.13.0...v0.14.0
+[0.13.0]: https://github.com/skill-one/agents-skills/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/skill-one/agents-skills/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/skill-one/agents-skills/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/skill-one/agents-skills/compare/v0.12.0...v0.12.1

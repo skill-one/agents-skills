@@ -1,6 +1,6 @@
 [package]
 name = "agents-skills"
-version = "0.17.0"
+version = "0.18.0"
 edition = "2024"
 description = "A minimal, stable, easy-to-understand skill installer and manager for AI agents"
 license = "MIT OR Apache-2.0"
@@ -10,7 +10,7 @@ readme = "README.md"
 keywords = ["skills", "ai-agents", "cli", "installer", "claude"]
 categories = ["command-line-utilities", "development-tools"]
 rust-version = "1.88"
-exclude = [".github/", ".codebuddy/", "AGENT.md"]
+exclude = [".github/", ".codebuddy/", "AGENTS.md"]
 
 [[bin]]
 name = "agents-skills"
@@ -20,13 +20,13 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-noyalib = { version = "0.0", features = [] }
+noyalib = { version = "0.0.45", features = [] }
 git2 = { version = "0.21", features = ["https", "vendored-libgit2"] }
 ureq = { version = "3", features = ["gzip"] }
-dirs = "6"
+dirs = "7"
 tempfile = "3"
 thiserror = "2"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
 tar = "0.4"
 flate2 = "1"
 pathdiff = "0.2"
