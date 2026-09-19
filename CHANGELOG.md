@@ -25,6 +25,16 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 - fix(add): executable files keep their `+x` bit. Archives are downloaded as
   `tar.gz` (zip drops Unix modes) and API downloads restore the mode reported by
   the `git/trees` listing.
+- fix(add): the "already installed → skip" guard only matched the normalized
+  directory name. A parked copy under an unnormalized name
+  (`disabled-skills/PDF Master` for `pdf-master`) was therefore missed, and `add`
+  created a second copy of an already-installed skill — one name in both dirs,
+  which `enable` / `disable` then had to resolve.
+- fix(remove): removal now deletes *every* copy of a name — both dirs, under
+  either spelling — instead of looking up the canonical name only, so `remove
+  --all` can no longer leave a parked duplicate behind. A name is reported as
+  removed only when something was actually deleted; a failed delete no longer
+  counts as success.
 
 ### Changed
 
@@ -37,6 +47,16 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
   a genuinely unavailable API reports the failure and names `GITHUB_TOKEN` as the
   remedy for the 60 requests/hour unauthenticated rate limit. A repository-wide
   install, `--list`, and GitLab keep using the archive — it is their only path.
+- `enable` / `disable` now resolve a skill present in *both* dirs by overwriting
+  instead of failing. A disabled skill can be re-installed at any time by a
+  third-party tool, or by an agent sharing the canonical dir, so one name living
+  in both `skills/` and `disabled-skills/` is a normal state rather than an error.
+  The copy being moved wins: the stale copy already in the target dir is deleted,
+  with no notice beyond the usual `Enabled`/`Disabled <name>` line, so one name
+  always maps to exactly one directory. Copies whose directory name differs only
+  by normalization (`PDF Master` vs `pdf-master`) count as the same skill and are
+  collapsed too. Previously such an `enable` / `disable` failed with
+  `Directory not empty (os error 66)` and left the duplicate in place.
 
 ### Added
 

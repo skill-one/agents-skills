@@ -5,14 +5,12 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::core::agents::{
-    AGENTS, Env, config_home, disabled_skills_dir, home, is_installed, is_native,
-};
+use crate::core::agents::{AGENTS, Env, config_home, home, is_installed, is_native};
 use crate::core::discover::{Skill, discover_skills, filter_skills};
 use crate::core::fetch::fetch_source;
 use crate::core::github::{fetch_skill_via_api, fetch_subdir_via_api};
 use crate::core::install::{
-    get_canonical_path, install_skill, list_disabled_skills, list_installed_skills, scan_disabled,
+    install_skill, list_disabled_skills, list_installed_skills, remove_skill, scan_disabled,
     scan_installed,
 };
 use crate::core::link::{is_agent_linked, link_agent, private_content, unlink_agent};
@@ -518,6 +516,11 @@ impl Manager {
     /// `disabled-skills` dir, hiding it from every linked or universal agent at once.
     /// Files are preserved, so [`Manager::enable`] restores them losslessly.
     ///
+    /// A copy of the same skill already parked in the disabled dir is stale — a
+    /// disabled skill can be re-installed behind our back by a third-party agent —
+    /// so the copy being moved wins and the stale one is discarded. One skill name
+    /// therefore always maps to exactly one directory.
+    ///
     /// # Selection semantics
     ///
     /// - `skills` empty and `all` false → nothing is disabled; the outcome reports the
@@ -594,7 +597,10 @@ impl Manager {
     ///
     /// Moves each selected skill's directory from the `disabled-skills` dir back into
     /// the canonical dir, restoring its visibility to every linked or universal agent.
-    /// This is the exact inverse of [`Manager::disable`].
+    /// This is the exact inverse of [`Manager::disable`], except for which copy
+    /// survives a clash: an enabled copy of the same skill — a third-party agent may
+    /// re-install a skill whose copy is still parked — is discarded and replaced by
+    /// the copy being moved. A name is never left present in both dirs.
     ///
     /// # Selection semantics
     ///
@@ -670,10 +676,11 @@ impl Manager {
 
     /// Remove installed skills.
     ///
-    /// Deletes each skill's directory from the canonical dir. Removal applies to
-    /// every linked agent at once (they all share the canonical dir); agent links
-    /// themselves are untouched — call [`Manager::agent`] with `unlink: true` to
-    /// disconnect an agent instead.
+    /// Deletes each skill's directory from the canonical dir, plus any parked copy in
+    /// the disabled dir — including copies under a differently normalized directory
+    /// name. Removal applies to every linked agent at once (they all share the
+    /// canonical dir); agent links themselves are untouched — call [`Manager::agent`]
+    /// with `unlink: true` to disconnect an agent instead.
     ///
     /// # Selection semantics
     ///
@@ -739,15 +746,14 @@ impl Manager {
             });
         }
 
-        // Remove from the canonical dir (visible to every linked agent at once).
-        // `selected` holds on-disk directory names, so both lookups use them as-is.
+        // Remove every copy of each selected name: the canonical one (visible to
+        // every linked agent at once) and any parked copy in the disabled dir,
+        // including copies under a differently normalized directory name.
         let mut removed: Vec<String> = Vec::new();
         for name in &selected {
-            let _ = std::fs::remove_dir_all(get_canonical_path(name, &self.env));
-            // Also remove any parked copy in the disabled dir.
-            let _ = std::fs::remove_dir_all(disabled_skills_dir(&self.env).join(name));
-
-            removed.push(name.clone());
+            if remove_skill(name, &self.env) {
+                removed.push(name.clone());
+            }
         }
 
         Ok(RemoveOutcome {

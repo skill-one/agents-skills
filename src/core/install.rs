@@ -65,13 +65,32 @@ pub fn sanitize_name(name: &str) -> String {
     result
 }
 
-/// Path of a skill directory in the canonical dir, from its **on-disk directory
-/// name** (as produced by [`scan_installed`]).
+/// Directories in `dir` that denote the same skill as `name`: their on-disk name
+/// normalizes to the same string.
 ///
-/// The name is used as-is: a skill adopted from an agent dir keeps that dir's
-/// name, which need not equal `sanitize_name(frontmatter name)`.
-pub fn get_canonical_path(name: &str, env: &Env) -> PathBuf {
-    canonical_skills_dir(env).join(name)
+/// A raw name comparison is not enough — a skill adopted from an agent dir keeps
+/// that dir's original name (`PDF Master`), which need not equal
+/// `sanitize_name(frontmatter name)` (`pdf-master`). Dot-entries are never skills.
+fn same_skill_entries(dir: &Path, name: &str) -> Vec<PathBuf> {
+    let key = sanitize_name(name);
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter(|entry| {
+            let raw = entry.file_name().to_string_lossy().into_owned();
+            !raw.starts_with('.') && sanitize_name(&raw) == key && entry.path().is_dir()
+        })
+        .map(|entry| entry.path())
+        .collect()
+}
+
+/// Whether `dir` already holds the skill `name`, under the normalized slot name or
+/// under an adopted directory name that normalizes to the same skill.
+fn holds_skill(dir: &Path, name: &str) -> bool {
+    dir.join(sanitize_name(name)).symlink_metadata().is_ok()
+        || !same_skill_entries(dir, name).is_empty()
 }
 
 /// Canonicalize as much of `p` as exists: the deepest existing ancestor is
@@ -163,9 +182,11 @@ pub fn install_skill(skill: &Skill, env: &Env) -> InstallResult {
 
     // Already installed, enabled or disabled → skip. Installing anyway would
     // silently discard local edits, and over a *disabled* skill it would leave a
-    // duplicate copy behind (both dirs hold the same name).
-    let disabled_dir = disabled_skills_dir(env).join(&skill_name);
-    if canonical_dir.symlink_metadata().is_ok() || disabled_dir.symlink_metadata().is_ok() {
+    // duplicate copy behind (both dirs hold the same skill). Both dirs are matched
+    // by normalized name, so an adopted copy under an unnormalized directory name
+    // (e.g. `PDF Master` for `pdf-master`) counts as installed too.
+    let disabled_base = disabled_skills_dir(env);
+    if holds_skill(&canonical_base, &skill.name) || holds_skill(&disabled_base, &skill.name) {
         return InstallResult {
             success: true,
             canonical_path: canonical_dir,
@@ -364,9 +385,16 @@ pub fn list_disabled_skills(env: &Env) -> Vec<InstalledSkill> {
 ///
 /// `to_enabled=true` moves `disabled-skills/<name>` → `skills/<name>` (enable);
 /// `to_enabled=false` moves `skills/<name>` → `disabled-skills/<name>` (disable).
-/// `name` is the **on-disk directory name** (see [`get_canonical_path`]) and is
-/// used as-is, so adopted skills whose name was never normalized still move.
+/// `name` is the **on-disk directory name** (as produced by [`scan_installed`]) and
+/// is used as-is, so adopted skills whose name was never normalized still move.
 /// The target parent dir is created if needed.
+///
+/// The copy being moved wins: a stale copy already occupying the target slot is
+/// discarded first, so one skill name always maps to exactly one directory. A copy
+/// under a differently normalized directory name (`PDF Master` vs `pdf-master`)
+/// counts as the same skill and is discarded as well. This is what makes
+/// `enable`/`disable` converge when a third-party agent re-installed a skill that
+/// was still parked in the disabled dir.
 pub fn move_skill(name: &str, to_enabled: bool, env: &Env) -> Result<()> {
     let canonical = canonical_skills_dir(env).join(name);
     let disabled = disabled_skills_dir(env).join(name);
@@ -375,11 +403,43 @@ pub fn move_skill(name: &str, to_enabled: bool, env: &Env) -> Result<()> {
     } else {
         (&canonical, &disabled)
     };
-    if let Some(parent) = to.parent() {
-        fs::create_dir_all(parent)?;
+    // Never free the target before the source is known to exist: a missing source
+    // would turn the move into a plain delete.
+    fs::symlink_metadata(from)?;
+    let Some(parent) = to.parent() else {
+        return Ok(());
+    };
+    fs::create_dir_all(parent)?;
+    // Free the target slot, dropping the stale copy that occupies it.
+    for stale in same_skill_entries(parent, name) {
+        remove_path(&stale);
+    }
+    if to.symlink_metadata().is_ok() {
+        remove_path(to);
     }
     fs::rename(from, to)?;
     Ok(())
+}
+
+/// Delete every on-disk copy of the skill `name` — in both dirs, under the
+/// normalized slot name or an adopted directory name that normalizes to the same
+/// skill. Returns whether anything was actually removed.
+pub fn remove_skill(name: &str, env: &Env) -> bool {
+    let mut removed = false;
+    for dir in [canonical_skills_dir(env), disabled_skills_dir(env)] {
+        let mut slots = same_skill_entries(&dir, name);
+        // The slot itself may hold a non-directory (a stray file), which the scan
+        // above does not report but a rename would still collide with.
+        slots.push(dir.join(name));
+        for path in slots {
+            if path.symlink_metadata().is_err() {
+                continue;
+            }
+            remove_path(&path);
+            removed |= path.symlink_metadata().is_err();
+        }
+    }
+    removed
 }
 
 #[cfg(test)]
@@ -566,6 +626,106 @@ mod tests {
                 .join(".agents/disabled-skills/PDF Master")
                 .exists()
         );
+    }
+
+    #[test]
+    fn move_skill_discards_the_copy_occupying_the_target_slot() {
+        // A disabled skill re-installed by a third-party agent: the same name now
+        // lives in both dirs, and the copy being moved wins.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        let canonical = tmp.path().join(".agents/skills/pdf");
+        let parked = tmp.path().join(".agents/disabled-skills/pdf");
+        for (dir, body) in [(&parked, "parked"), (&canonical, "reinstalled")] {
+            fs::create_dir_all(dir).unwrap();
+            fs::write(dir.join("SKILL.md"), body).unwrap();
+        }
+
+        move_skill("pdf", true, &env).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(canonical.join("SKILL.md")).unwrap(),
+            "parked"
+        );
+        assert!(!parked.exists());
+    }
+
+    #[test]
+    fn move_skill_discards_a_differently_named_copy_of_the_same_skill() {
+        // An adopted dir keeps its original name, so `PDF Master` and `pdf-master`
+        // are the same skill: moving one in must not leave two copies behind.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        let adopted = tmp.path().join(".agents/skills/PDF Master");
+        let parked = tmp.path().join(".agents/disabled-skills/pdf-master");
+        for (dir, body) in [(&adopted, "adopted"), (&parked, "parked")] {
+            fs::create_dir_all(dir).unwrap();
+            fs::write(dir.join("SKILL.md"), body).unwrap();
+        }
+
+        move_skill("pdf-master", true, &env).unwrap();
+
+        assert!(!adopted.exists(), "the stale canonical copy must be gone");
+        assert_eq!(
+            fs::read_to_string(tmp.path().join(".agents/skills/pdf-master/SKILL.md")).unwrap(),
+            "parked"
+        );
+        assert!(!parked.exists());
+    }
+
+    #[test]
+    fn move_skill_keeps_the_target_when_the_source_is_gone() {
+        // Freeing the target before the source is known to exist would turn the move
+        // into a plain delete.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        let canonical = tmp.path().join(".agents/skills/pdf");
+        fs::create_dir_all(&canonical).unwrap();
+        fs::write(canonical.join("SKILL.md"), "enabled").unwrap();
+
+        assert!(move_skill("pdf", true, &env).is_err());
+        assert_eq!(
+            fs::read_to_string(canonical.join("SKILL.md")).unwrap(),
+            "enabled"
+        );
+    }
+
+    #[test]
+    fn install_skill_skips_a_disabled_copy_under_an_unnormalized_name() {
+        // The guard matches on the normalized name, so a parked `PDF Master` still
+        // counts as installed — `add` must not create a second copy that
+        // `enable`/`disable` would then have to resolve.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        let parked = tmp.path().join(".agents/disabled-skills/PDF Master");
+        fs::create_dir_all(&parked).unwrap();
+        fs::write(parked.join("SKILL.md"), "parked").unwrap();
+
+        let src = tmp.path().join("src-skill");
+        let r = install_skill(&write_skill(&src, "PDF Master"), &env);
+
+        assert!(r.success);
+        assert!(r.skipped);
+        assert!(!tmp.path().join(".agents/skills/pdf-master").exists());
+    }
+
+    #[test]
+    fn remove_skill_deletes_both_copies_under_either_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        let canonical = tmp.path().join(".agents/skills/pdf-master");
+        let parked = tmp.path().join(".agents/disabled-skills/PDF Master");
+        for dir in [&canonical, &parked] {
+            fs::create_dir_all(dir).unwrap();
+            fs::write(dir.join("SKILL.md"), "x").unwrap();
+        }
+
+        assert!(remove_skill("pdf-master", &env));
+        assert!(!canonical.exists());
+        assert!(!parked.exists());
+
+        // Nothing left: the report must not claim a removal.
+        assert!(!remove_skill("pdf-master", &env));
     }
 
     #[test]

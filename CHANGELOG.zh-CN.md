@@ -22,6 +22,13 @@
   130 字节的文本桩当成文件装上。
 - fix(add)：可执行文件保留 `+x` 位。归档改用 `tar.gz` 下载（zip 会丢失 Unix 权限
   位），API 下载则按 `git/trees` 列表里的 mode 还原。
+- fix(add)："已安装则跳过"的保护此前只用规范化后的目录名匹配。因此未规范化的停放副本
+  （如 `pdf-master` 对应的 `disabled-skills/PDF Master`）会被漏掉，`add` 会为一个已
+  安装的技能再造出第二份副本——同一个名字同时落进两个目录，随后还得靠 `enable` /
+  `disable` 去收拾。
+- fix(remove)：删除现在会清掉一个名字的所有副本——两个目录、两种拼写——而不再只按
+  canonical 名字查找，因此 `remove --all` 不会再残留停放副本。也只在真的删掉东西时才把
+  该名字计入已删除；此前删除失败会被静默计入成功。
 
 ### 变更
 
@@ -32,6 +39,13 @@
   `No skill named "…" in …`（附 `--list` 提示）；确实是 API 不可用时,则明确报错
   并把 `GITHUB_TOKEN` 作为未认证 60 次/小时限额的解法点出来。整仓安装、`--list`
   与 GitLab 仍然走归档——那是它们唯一的路径。
+- `enable` / `disable` 现在对同时存在于两个目录的技能改为覆盖，而不是报错。被禁用的
+  技能随时可能被第三方工具、或共享 canonical 目录的 agent 重新安装，因此同一个名字同时
+  存在于 `skills/` 与 `disabled-skills/` 是正常状态，不是错误。被搬动的那份胜出：目标
+  目录里已有的旧副本会被删除，除常规的 `Enabled`/`Disabled <name>` 外不再额外提示，因此
+  一个技能名始终只对应一个目录。目录名仅规范化不同的副本（`PDF Master` 与
+  `pdf-master`）视为同一技能，同样会被合并。此前这种 `enable` / `disable` 会以
+  `Directory not empty (os error 66)` 失败，并留下那个重复副本。
 
 ### 新增
 

@@ -99,6 +99,28 @@ fn remove_deletes_disabled_skill() {
 }
 
 #[test]
+fn remove_clears_a_skill_present_in_both_dirs() {
+    let p = TestProject::new();
+    // The same skill enabled and parked (a third-party re-install), under two
+    // spellings: both dirs and both names must be matched.
+    let canonical = p.path().join(".agents/skills/pdf-master");
+    std::fs::create_dir_all(&canonical).unwrap();
+    std::fs::write(canonical.join("SKILL.md"), "---\nname: pdf-master\n---\n").unwrap();
+    let parked = p.path().join(".agents/disabled-skills/PDF Master");
+    std::fs::create_dir_all(&parked).unwrap();
+    std::fs::write(parked.join("SKILL.md"), "---\nname: PDF Master\n---\n").unwrap();
+
+    p.skills()
+        .args(["remove", "--all"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Successfully removed 1 skill"));
+
+    p.assert_absent(".agents/skills/pdf-master");
+    p.assert_absent(".agents/disabled-skills/PDF Master");
+}
+
+#[test]
 fn remove_all_deletes_disabled_skills() {
     let p = TestProject::new();
     // An enabled skill plus a disabled one.

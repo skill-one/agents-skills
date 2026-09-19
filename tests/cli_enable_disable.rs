@@ -143,3 +143,77 @@ fn list_json_reports_enabled_field() {
         .success()
         .stdout(predicate::str::contains("\"enabled\": false"));
 }
+
+/// Simulate a third-party agent re-installing a skill whose copy is still parked in
+/// the disabled dir: the name then exists in both dirs.
+fn third_party_reinstall(p: &TestProject, name: &str) {
+    let dir = p.path().join(".agents/skills").join(name);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("SKILL.md"),
+        format!("---\nname: {name}\ndescription: reinstalled\n---\n\n# {name}\n"),
+    )
+    .unwrap();
+}
+
+#[test]
+fn enable_overwrites_the_enabled_copy_of_a_disabled_skill() {
+    let p = TestProject::new();
+    add_skill(&p, "my-skill", "pdf");
+    p.skills().args(["disable", "pdf"]).assert().success();
+    third_party_reinstall(&p, "pdf");
+
+    p.skills()
+        .args(["enable", "pdf"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Enabled pdf"));
+
+    // Exactly one copy left, and it is the one being enabled.
+    p.assert_exists(".agents/skills/pdf/SKILL.md");
+    p.assert_absent(".agents/disabled-skills/pdf");
+    assert!(
+        !p.read(".agents/skills/pdf/SKILL.md")
+            .contains("reinstalled")
+    );
+}
+
+#[test]
+fn disable_overwrites_the_parked_copy_of_a_reinstalled_skill() {
+    let p = TestProject::new();
+    add_skill(&p, "my-skill", "pdf");
+    p.skills().args(["disable", "pdf"]).assert().success();
+    third_party_reinstall(&p, "pdf");
+
+    p.skills()
+        .args(["disable", "pdf"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Disabled pdf"));
+
+    p.assert_absent(".agents/skills/pdf");
+    p.assert_exists(".agents/disabled-skills/pdf/SKILL.md");
+    assert!(
+        p.read(".agents/disabled-skills/pdf/SKILL.md")
+            .contains("reinstalled")
+    );
+}
+
+#[test]
+fn enable_replaces_a_differently_named_copy_of_the_same_skill() {
+    let p = TestProject::new();
+    // An adopted skill keeps its original dir name; the parked `pdf-master` is the
+    // same skill, so enabling it must leave one copy in the canonical dir.
+    let adopted = p.path().join(".agents/skills/PDF Master");
+    std::fs::create_dir_all(&adopted).unwrap();
+    std::fs::write(adopted.join("SKILL.md"), common::skill_md("PDF Master")).unwrap();
+    let parked = p.path().join(".agents/disabled-skills/pdf-master");
+    std::fs::create_dir_all(&parked).unwrap();
+    std::fs::write(parked.join("SKILL.md"), common::skill_md("pdf-master")).unwrap();
+
+    p.skills().args(["enable", "pdf-master"]).assert().success();
+
+    p.assert_absent(".agents/skills/PDF Master");
+    p.assert_exists(".agents/skills/pdf-master/SKILL.md");
+    p.assert_absent(".agents/disabled-skills/pdf-master");
+}

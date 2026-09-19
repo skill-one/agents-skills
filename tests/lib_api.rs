@@ -458,3 +458,100 @@ fn lib_disable_enable_are_idempotent() {
     assert!(missing.already.is_empty());
     assert_eq!(missing.missing, vec!["nope".to_string()]);
 }
+
+/// A third-party agent re-installs a skill whose copy is still parked in the
+/// disabled dir, so the same name ends up in both dirs.
+fn third_party_reinstall(home: &Path, name: &str) {
+    write_skill_source(home, &format!(".agents/skills/{name}"), name);
+}
+
+#[test]
+fn lib_enable_replaces_the_enabled_copy_of_a_reinstalled_skill() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let (manager, home) = manager_at(&tmp);
+    let src = write_skill_source(tmp.path(), "src", "pdf");
+    manager
+        .add(&AddRequest {
+            source: src.display().to_string(),
+            ..Default::default()
+        })
+        .unwrap();
+    manager
+        .disable(&DisableRequest {
+            skills: vec!["pdf".to_string()],
+            ..Default::default()
+        })
+        .unwrap();
+    third_party_reinstall(&home, "pdf");
+
+    // The copy being enabled wins; this used to fail on the occupied target and
+    // leave the skill present in both dirs.
+    let outcome = manager
+        .enable(&EnableRequest {
+            skills: vec!["pdf".to_string()],
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(outcome.enabled, vec!["pdf".to_string()]);
+    assert!(outcome.already.is_empty());
+    assert!(outcome.missing.is_empty());
+
+    // One name, one directory: `list` no longer reports the skill twice.
+    let listed = manager.list().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert!(listed[0].enabled);
+}
+
+#[test]
+fn lib_disable_replaces_the_parked_copy_of_a_reinstalled_skill() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let (manager, home) = manager_at(&tmp);
+    let src = write_skill_source(tmp.path(), "src", "pdf");
+    manager
+        .add(&AddRequest {
+            source: src.display().to_string(),
+            ..Default::default()
+        })
+        .unwrap();
+    manager
+        .disable(&DisableRequest {
+            skills: vec!["pdf".to_string()],
+            ..Default::default()
+        })
+        .unwrap();
+    third_party_reinstall(&home, "pdf");
+
+    let outcome = manager
+        .disable(&DisableRequest {
+            skills: vec!["pdf".to_string()],
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(outcome.disabled, vec!["pdf".to_string()]);
+
+    assert!(!home.join(".agents/skills/pdf").exists());
+    assert!(home.join(".agents/disabled-skills/pdf/SKILL.md").exists());
+    let listed = manager.list().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert!(!listed[0].enabled);
+}
+
+#[test]
+fn lib_remove_deletes_both_copies_under_either_name() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let (manager, home) = manager_at(&tmp);
+    write_skill_source(&home, ".agents/skills/pdf-master", "pdf-master");
+    write_skill_source(&home, ".agents/disabled-skills/PDF Master", "PDF Master");
+
+    let outcome = manager
+        .remove(&RemoveRequest {
+            all: true,
+            ..Default::default()
+        })
+        .unwrap();
+
+    assert_eq!(outcome.removed, vec!["pdf-master".to_string()]);
+    assert!(!home.join(".agents/skills/pdf-master").exists());
+    assert!(!home.join(".agents/disabled-skills/PDF Master").exists());
+    assert!(manager.list().unwrap().is_empty());
+}
