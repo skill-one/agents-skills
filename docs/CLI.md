@@ -78,7 +78,7 @@ agents-skills remove --all    # remove all skills
 
 ## list
 
-List installed skills (including enabled/disabled status). Use
+List installed skills with each skill's description and install time. Use
 `agent --status` for each agent's link status.
 
 ```
@@ -88,13 +88,38 @@ agents-skills list [options]
 | Option                | Description                                                  |
 | --------------------- | ------------------------------------------------------------ |
 | `-p, --project <dir>` | List skills in the given project directory (default: global) |
-| `--json`              | JSON output (machine-readable, includes the `enabled` field) |
+| `--json`              | JSON output (machine-readable)                               |
 
 ```bash
 agents-skills list
 agents-skills list --json
 agents-skills list --project .
 ```
+
+Each skill is printed on two lines — name and description, then
+`path [status] · <local install time>`:
+
+```
+Project Skills
+
+docx Create and edit Word documents, including tables and headers.
+  .agents/skills/docx [enabled] · 2026-09-19 12:54
+```
+
+`list --json` emits the same fields per skill:
+
+| Field         | Description                                                                    |
+| ------------- | ------------------------------------------------------------------------------ |
+| `name`        | Skill name (from `SKILL.md` frontmatter)                                       |
+| `description` | Skill description, collapsed onto a single line                                |
+| `path`        | Directory the skill currently lives in (canonical, or `disabled-skills`)       |
+| `enabled`     | `true` in the canonical directory, `false` parked in `disabled-skills`         |
+| `installedAt` | Skill directory creation time as Unix seconds (UTC), or `null` when unavailable |
+
+`installedAt` approximates when the skill landed on disk: it is exact for `add`
+installs, but a skill adopted from an agent directory keeps that directory's
+original creation time, and re-installing over a skill refreshes it. It is
+`null` on filesystems that record no creation time (some Linux filesystems).
 
 ## disable / enable
 

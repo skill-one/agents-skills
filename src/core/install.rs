@@ -221,8 +221,32 @@ fn remove_path(p: &Path) {
 pub struct InstalledSkill {
     /// Skill name.
     pub name: String,
-    /// Canonical directory path.
+    /// Skill description, collapsed onto a single line.
+    pub description: String,
+    /// Directory the skill currently lives in (canonical or disabled).
     pub canonical_path: PathBuf,
+    /// The skill directory's creation time as Unix seconds, when the platform
+    /// and filesystem record one.
+    ///
+    /// Approximate "when it landed on disk": exact for `add` installs, but a
+    /// skill adopted from an agent dir keeps that dir's original time, and
+    /// several Linux filesystems report no creation time at all.
+    pub installed_at: Option<u64>,
+}
+
+/// Collapse whitespace so a frontmatter block scalar reads as one line.
+fn one_line(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A directory's creation time as Unix seconds, when the platform/filesystem
+/// records one (macOS and Windows do; some Linux filesystems do not).
+pub fn dir_created_secs(dir: &Path) -> Option<u64> {
+    fs::metadata(dir)
+        .and_then(|m| m.created())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
 }
 
 /// Scan the canonical dir, listing installed skills.
@@ -250,6 +274,8 @@ pub fn list_installed_skills(env: &Env, global: bool) -> Vec<InstalledSkill> {
         };
         out.push(InstalledSkill {
             name: skill.name,
+            description: one_line(&skill.description),
+            installed_at: dir_created_secs(&skill_dir),
             canonical_path: skill_dir,
         });
     }
@@ -312,6 +338,8 @@ pub fn list_disabled_skills(env: &Env, global: bool) -> Vec<InstalledSkill> {
         };
         out.push(InstalledSkill {
             name: skill.name,
+            description: one_line(&skill.description),
+            installed_at: dir_created_secs(&skill_dir),
             canonical_path: skill_dir,
         });
     }

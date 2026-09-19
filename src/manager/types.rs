@@ -209,12 +209,20 @@ pub struct AgentOutcome {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListedSkill {
-    /// Skill name.
+    /// Skill name (from `SKILL.md` frontmatter).
     pub name: String,
-    /// Canonical directory path.
+    /// Skill description (from `SKILL.md` frontmatter).
+    pub description: String,
+    /// Directory the skill currently lives in (canonical, or `disabled-skills`).
     pub path: PathBuf,
     /// Whether the skill is enabled (`true`) or parked in `disabled-skills` (`false`).
     pub enabled: bool,
+    /// The skill directory's creation time, as Unix seconds (UTC) — an
+    /// approximation of when it landed on disk. Exact for `add` installs, but a
+    /// skill adopted from an agent dir keeps that dir's original time. `None`
+    /// when the platform/filesystem records no creation time (some Linux
+    /// filesystems).
+    pub installed_at: Option<u64>,
 }
 
 /// Result of [`Manager::remove`].

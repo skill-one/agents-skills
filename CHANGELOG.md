@@ -7,6 +7,38 @@ the project adheres to [Semantic Versioning](https://semver.org/): while in
 
 For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## [0.16.0] — 2026-09-19
+
+### Added
+
+- `list` now reports each skill's `description` and `installedAt`. The plain
+  output prints two lines per skill (name + description, then
+  `path [status] · <local time>`).
+
+### Changed
+
+- **(breaking)** `ListedSkill` gained `description: String` and
+  `installed_at: Option<u64>` (serialized as `installedAt`), and its `path` is
+  documented as "the directory the skill currently lives in" — for a disabled
+  skill that is `disabled-skills/<dir>`, not the canonical dir.
+
+### Notes
+
+- `installedAt` is the **skill directory's** creation time, an approximation of
+  when the skill landed on disk, and is not read from file metadata: it is exact
+  for `add` installs (the staged directory is created at install time), but a
+  skill adopted from an agent dir keeps that directory's original creation time,
+  and re-installing over a skill refreshes it. It is `null` where the filesystem
+  records no creation time (some Linux filesystems).
+
+- `description` is collapsed onto a single line, so a YAML block scalar renders
+  as one line in both the plain output and `--json`.
+
+### Dependencies
+
+- Added `jiff` with minimal features (`std`, `tz-system`) to render
+  `installedAt` in the local time zone.
+
 ## [0.15.0] — 2026-09-19
 
 ### Removed

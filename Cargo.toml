@@ -1,6 +1,6 @@
 [package]
 name = "agents-skills"
-version = "0.15.0"
+version = "0.16.0"
 edition = "2024"
 description = "A minimal, stable, easy-to-understand skill installer and manager for AI agents"
 license = "MIT OR Apache-2.0"
@@ -31,6 +31,7 @@ tar = "0.4"
 flate2 = "1"
 pathdiff = "0.2"
 url = "2"
+jiff = { version = "0.2.37", default-features = false, features = ["std", "tz-system"] }
 
 [dev-dependencies]
 assert_cmd = "2"

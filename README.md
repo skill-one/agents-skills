@@ -61,7 +61,8 @@ agents-skills enable pdf                           # re-enable (inverse of disab
 - For unlinked agents, `agent --status` categorizes the contents of their own
   skills directory (`private skills` / `other files`) — that is, what linking
   would adopt; content of linked/canonical agents is shown by `list`.
-- `list` always shows every skill, tagged `enabled`/`disabled`.
+- `list` always shows every skill with its description, path, `enabled`/`disabled`
+  status and an approximate install time (`installedAt` in `--json`).
 
 ### Source formats
 

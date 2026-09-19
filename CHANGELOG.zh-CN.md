@@ -7,6 +7,34 @@
 
 英文版见 [CHANGELOG.md](CHANGELOG.md)。
 
+## [0.16.0] — 2026-09-19
+
+### 新增
+
+- `list` 现在报告每个技能的 `description` 与 `installedAt`。普通输出每个技能打印
+  两行（名称 + 描述，随后是 `路径 [状态] · <本地时间>`）。
+
+### 变更
+
+- **(breaking)** `ListedSkill` 新增 `description: String` 与
+  `installed_at: Option<u64>`（序列化为 `installedAt`）；`path` 的文档明确为
+  "技能当前所在目录"——对已禁用技能是 `disabled-skills/<目录>`，而非规范目录。
+
+### 说明
+
+- `installedAt` 是**技能目录**的创建时间，是"技能落到磁盘的时间"的近似值，并非
+  文件元数据：`add` 安装是精确的（暂存目录在安装时创建），但从 agent 目录并入的
+  技能会保留该目录原本的创建时间，且对同名技能重新安装会刷新它。在不记录创建时间
+  的文件系统（部分 Linux 文件系统）上为 `null`。
+
+- `description` 已规整为单行，因此 YAML 块标量在普通输出与 `--json` 中都显示为
+  一行。
+
+### 依赖
+
+- 新增 `jiff`，仅启用最小 feature（`std`、`tz-system`），用于按本地时区渲染
+  `installedAt`。
+
 ## [0.15.0] — 2026-09-19
 
 ### 移除

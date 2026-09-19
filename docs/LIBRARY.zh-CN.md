@@ -71,6 +71,14 @@ fn main() -> agents_skills::Result<()> {
 空 = 自动探测）。哪些 agent 能看到某个技能是作用域级状态（由
 [`Manager::agent_status`] 查询），不是 per-skill 属性。
 
+### 结果结构体字段
+
+[`Manager::list`] 返回 [`ListedSkill`]，即 `list --json` 序列化的精确形状：
+`name`、`description`（已规整为单行）、`path`（技能当前所在目录：规范目录或
+`disabled-skills`）、`enabled`、`installed_at`（Unix 秒，UTC；文件系统不记录
+创建时间时为 `None`）。`installed_at` 是"技能落到磁盘的时间"的近似值：`add`
+安装是精确的，但从 agent 目录并入的技能会保留该目录原本的创建时间。
+
 ### 与 CLI 的对应约定
 
 - **`add` 单 source**：CLI 的 `add <source...>` 可一次装多个源，库的

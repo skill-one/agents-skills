@@ -73,22 +73,46 @@ agents-skills remove --all    # 移除全部技能
 
 ## list
 
-列出已安装技能（含启用/禁用状态）。各 agent 的链接状态用 `agent --status` 查询。
+列出已安装技能，附每个技能的描述与安装时间。各 agent 的链接状态用
+`agent --status` 查询。
 
 ```
 agents-skills list [options]
 ```
 
-| 选项                    | 说明                           |
-| --------------------- | ---------------------------- |
-| `-p, --project <dir>` | 列出指定项目目录的技能（默认全局）            |
-| `--json`              | JSON 输出（机器可读，含 `enabled` 字段） |
+| 选项                    | 说明                  |
+| --------------------- | ------------------- |
+| `-p, --project <dir>` | 列出指定项目目录的技能（默认全局）   |
+| `--json`              | JSON 输出（机器可读）       |
 
 ```bash
 agents-skills list
 agents-skills list --json
 agents-skills list --project .
 ```
+
+每个技能打印两行 —— 名称与描述，随后是 `路径 [状态] · <本地安装时间>`：
+
+```
+Project Skills
+
+docx Create and edit Word documents, including tables and headers.
+  .agents/skills/docx [enabled] · 2026-09-19 12:54
+```
+
+`list --json` 每个技能输出相同字段：
+
+| 字段            | 说明                                        |
+| ------------- | ----------------------------------------- |
+| `name`        | 技能名（取自 `SKILL.md` frontmatter）            |
+| `description` | 技能描述，已规整为单行                               |
+| `path`        | 技能当前所在目录（规范目录，或 `disabled-skills`）        |
+| `enabled`     | `true` 在规范目录，`false` 停放在 `disabled-skills` |
+| `installedAt` | 技能目录的创建时间，Unix 秒（UTC）；无法获取时为 `null`       |
+
+`installedAt` 是"技能落到磁盘的时间"的近似值：`add` 安装是精确的，但从 agent
+目录并入的技能会保留该目录原本的创建时间，且对同名技能重新安装会刷新它；在
+不记录创建时间的文件系统（部分 Linux 文件系统）上为 `null`。
 
 ## disable / enable
 

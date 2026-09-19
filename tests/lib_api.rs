@@ -131,9 +131,39 @@ fn lib_list_json_shape() {
         .unwrap();
 
     let listed = manager.list(&ListRequest::default()).unwrap();
+    assert_eq!(listed[0].name, "pdf");
+    assert_eq!(listed[0].description, "does pdf");
     let json = serde_json::to_string_pretty(&listed).unwrap();
     assert!(json.contains("\"name\": \"pdf\""));
+    assert!(json.contains("\"description\": \"does pdf\""));
     assert!(json.contains("\"enabled\": true"));
+    assert!(json.contains("\"installedAt\""));
+}
+
+#[test]
+fn lib_list_collapses_block_scalar_description() {
+    // A YAML block scalar spans lines; the listed description is one line.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let cwd = tmp.path().join("project");
+    std::fs::create_dir_all(&cwd).unwrap();
+    let manager = Manager::builder().cwd(cwd).build();
+
+    let src = tmp.path().join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(
+        src.join("SKILL.md"),
+        "---\nname: docx\ndescription: |\n  Two\n  lines\n---\nbody\n",
+    )
+    .unwrap();
+    manager
+        .add(&AddRequest {
+            source: src.display().to_string(),
+            ..Default::default()
+        })
+        .unwrap();
+
+    let listed = manager.list(&ListRequest::default()).unwrap();
+    assert_eq!(listed[0].description, "Two lines");
 }
 
 #[test]

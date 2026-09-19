@@ -378,15 +378,19 @@ impl Manager {
         for s in installed {
             out.push(ListedSkill {
                 name: s.name,
+                description: s.description,
                 path: s.canonical_path,
                 enabled: true,
+                installed_at: s.installed_at,
             });
         }
         for s in disabled {
             out.push(ListedSkill {
                 name: s.name,
+                description: s.description,
                 path: s.canonical_path,
                 enabled: false,
+                installed_at: s.installed_at,
             });
         }
         out.sort_by(|a, b| a.name.cmp(&b.name));

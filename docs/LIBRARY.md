@@ -77,6 +77,16 @@ agents (`"*"` or specific names, empty = auto-detect). Which agents see a
 skill is scope-level state, reported by [`Manager::agent_status`] — not a
 per-skill property.
 
+### Result-struct fields
+
+[`Manager::list`] returns [`ListedSkill`] values — the exact shape `list --json`
+serializes: `name`, `description` (collapsed onto a single line), `path` (the
+directory the skill currently lives in: canonical, or `disabled-skills`),
+`enabled`, and `installed_at` (Unix seconds, UTC; `None` when the filesystem
+records no creation time). `installed_at` approximates when the skill landed on
+disk: exact for `add` installs, but a skill adopted from an agent directory
+keeps that directory's original creation time.
+
 ### Correspondence with the CLI
 
 - **`add` takes a single source**: the CLI's `add <source...>` installs

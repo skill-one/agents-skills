@@ -42,7 +42,7 @@ fn list_empty_project_prints_hint() {
 }
 
 #[test]
-fn list_json_reports_name_and_enabled() {
+fn list_json_reports_skill_fields() {
     let p = TestProject::new();
     let src = p.write_skill_source("my-skill", "pdf");
 
@@ -56,7 +56,28 @@ fn list_json_reports_name_and_enabled() {
         .assert()
         .success()
         .stdout(predicate::str::contains("\"name\": \"pdf\""))
-        .stdout(predicate::str::contains("\"enabled\": true"));
+        .stdout(predicate::str::contains("\"description\": \"does pdf\""))
+        .stdout(predicate::str::contains("\"enabled\": true"))
+        // The key is always emitted; the value may be null where the
+        // filesystem records no creation time.
+        .stdout(predicate::str::contains("\"installedAt\""));
+}
+
+#[test]
+fn list_plain_prints_description() {
+    let p = TestProject::new();
+    let src = p.write_skill_source("my-skill", "pdf");
+
+    p.skills()
+        .args(["add", src.to_str().unwrap(), "--project", "."])
+        .assert()
+        .success();
+
+    p.skills()
+        .args(["list", "--project", "."])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("does pdf"));
 }
 
 #[test]
