@@ -113,19 +113,13 @@ fn is_local_path(input: &str) -> bool {
     b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'/' || b[2] == b'\\')
 }
 
-fn host_of(input: &str) -> Option<String> {
-    Url::parse(input)
-        .ok()
-        .and_then(|u| u.host_str().map(|h| h.to_lowercase()))
-}
-
 /// Hosted artifact direct links (raw/archive/release asset) must be downloaded directly,
 /// not normalized into a parent repo clone.
 fn is_hosted_artifact_url(input: &str) -> bool {
     let Ok(parsed) = Url::parse(input) else {
         return false;
     };
-    let host = host_of(input).unwrap_or_default();
+    let host = parsed.host_str().unwrap_or_default().to_lowercase();
     if matches!(
         host.as_str(),
         "raw.githubusercontent.com" | "codeload.github.com" | "objects.githubusercontent.com"

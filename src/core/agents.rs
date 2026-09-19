@@ -17,6 +17,8 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
+use crate::core::path_util::normalize_lexical;
+
 /// The canonical skills dir, relative to the home directory.
 pub const UNIVERSAL_SKILLS_DIR: &str = ".agents/skills";
 
@@ -238,21 +240,6 @@ pub static AGENTS: LazyLock<&'static [Agent]> = LazyLock::new(|| {
 pub fn get_agent(name: &str) -> Option<&'static Agent> {
     let agents: &'static [Agent] = *AGENTS;
     agents.iter().find(|a| a.name == name)
-}
-
-/// Lexically resolve `.`/`..` components for path comparison (no filesystem access).
-fn normalize_lexical(p: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for comp in p.components() {
-        match comp {
-            std::path::Component::ParentDir => {
-                out.pop();
-            }
-            std::path::Component::CurDir => {}
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
 }
 
 /// Whether an agent natively reads the canonical dir, so no symlink is needed:

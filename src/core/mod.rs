@@ -8,6 +8,7 @@ pub mod fetch;
 pub mod github;
 pub mod install;
 pub mod link;
+pub mod path_util;
 pub mod source;
 pub mod tokens;
 

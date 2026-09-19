@@ -5,7 +5,9 @@
 //! symlink / path comparison utilities. No filesystem mutation lives here.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+use crate::core::path_util::normalize_lexical;
 
 pub(crate) fn entry_name(entry: &fs::DirEntry) -> String {
     entry.file_name().to_string_lossy().into_owned()
@@ -37,21 +39,6 @@ fn same_path(a: &Path, b: &Path) -> bool {
         (Ok(x), Ok(y)) => x == y,
         _ => normalize_lexical(a) == normalize_lexical(b),
     }
-}
-
-/// Lexically resolve `.`/`..` components (no filesystem access).
-fn normalize_lexical(p: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for comp in p.components() {
-        match comp {
-            std::path::Component::ParentDir => {
-                out.pop();
-            }
-            std::path::Component::CurDir => {}
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
 }
 
 /// Whether a dir entry is an old-model per-skill symlink into the canonical dir.

@@ -55,7 +55,7 @@ pub struct AddArgs {
 pub struct RemoveArgs {
     /// Skill names to remove
     pub skills: Vec<String>,
-    /// Specify skills to remove (use '*' for all skills)
+    /// Specify skill names to remove
     #[arg(short = 's', long = "skill", num_args = 1..)]
     pub skill: Vec<String>,
     /// Remove all installed skills
@@ -74,7 +74,7 @@ pub struct ListArgs {
 pub struct DisableArgs {
     /// Skill names to disable
     pub skills: Vec<String>,
-    /// Specify skills to disable (use '*' for all skills)
+    /// Specify skill names to disable
     #[arg(short = 's', long = "skill", num_args = 1..)]
     pub skill: Vec<String>,
     /// Disable all currently enabled skills
@@ -86,7 +86,7 @@ pub struct DisableArgs {
 pub struct EnableArgs {
     /// Skill names to enable
     pub skills: Vec<String>,
-    /// Specify skills to enable (use '*' for all skills)
+    /// Specify skill names to enable
     #[arg(short = 's', long = "skill", num_args = 1..)]
     pub skill: Vec<String>,
     /// Enable all currently disabled skills
@@ -141,10 +141,6 @@ pub fn show_banner() {
     );
     println!(
         "  {DIM}${RESET} {TEXT}agents-skills list{RESET}                 {DIM}List installed skills{RESET}"
-    );
-    println!();
-    println!(
-        "  {DIM}${RESET} {TEXT}agents-skills update{RESET}               {DIM}Update installed skills{RESET}"
     );
     println!();
     println!(

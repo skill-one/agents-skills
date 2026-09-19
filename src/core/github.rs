@@ -88,7 +88,8 @@ impl RepoRef {
 /// - `Ok(Some((temp, root)))`: the skill was found; `root` holds it at its original
 ///   relative path (e.g. `root/pdf/SKILL.md`).
 /// - `Ok(None)`: the GitHub API worked but no skill matched the name.
-/// - `Err`: API/network failure — callers should fall back to a full archive fetch.
+/// - `Err`: API/network failure — reported to the user; callers must not widen the
+///   request to a whole-repo archive fetch.
 pub fn fetch_skill_via_api(
     parsed: &Source,
     skill_name: &str,
@@ -105,7 +106,8 @@ pub fn fetch_skill_via_api(
 ///
 /// - `Ok(Some((temp, root)))`: the subpath files were fetched.
 /// - `Ok(None)`: the GitHub API worked but nothing exists under the subpath.
-/// - `Err`: API/network failure — callers should fall back to a full archive fetch.
+/// - `Err`: API/network failure — reported to the user; callers must not widen the
+///   request to a whole-repo archive fetch.
 pub fn fetch_subdir_via_api(parsed: &Source) -> Result<Option<(tempfile::TempDir, PathBuf)>> {
     fetch_subdir_via_api_with(parsed, &http_get)
 }

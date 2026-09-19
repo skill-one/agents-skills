@@ -66,7 +66,7 @@ agents-skills remove [skills...] [options]
 
 | Option               | Description                                 |
 | -------------------- | ------------------------------------------- |
-| `-s, --skill <s>...` | Skills to remove (`'*'` = all)              |
+| `-s, --skill <s>...` | Skill names to remove                       |
 | `--all`              | Remove all skills (including disabled ones) |
 
 ```bash
@@ -141,7 +141,7 @@ agents-skills enable  [skills...] [options]
 
 | Option               | Description                               |
 | -------------------- | ----------------------------------------- |
-| `-s, --skill <s>...` | Target skills (`'*'` = all)               |
+| `-s, --skill <s>...` | Skill names to disable / enable           |
 | `--all`              | Disable all enabled / enable all disabled |
 
 ```bash

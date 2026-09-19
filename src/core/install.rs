@@ -26,43 +26,71 @@ pub struct InstallResult {
     pub error: Option<String>,
 }
 
-/// Sanitize a directory name: lowercase → fold non-`[a-z0-9._]` to `-` → trim leading/trailing `.`/`-` → truncate to 255 → fallback.
+/// Characters that can never appear in a slot name, whatever the filesystem: `/` and
+/// `\` are path separators (nested dirs, traversal), and the rest are rejected by
+/// Windows (`< > : " | ? *`) or confusing on macOS (`:`).
+const UNSAFE_CHARS: [char; 9] = ['/', '\\', '<', '>', ':', '"', '|', '?', '*'];
+
+/// Longest slot name, in **bytes** — the common filesystem limit (ext4 / APFS /
+/// HFS+ all cap a single name at 255 bytes). Truncation must be byte-based and
+/// land on a character boundary: 255 CJK characters are 765 bytes and would make
+/// `create_dir` fail with `ENAMETOOLONG`.
+const MAX_SLOT_BYTES: usize = 255;
+
+/// Fold a skill name into its **slot name**: the directory the skill occupies in the
+/// canonical (or disabled) dir.
+///
+/// lowercase → every unsafe character ([`UNSAFE_CHARS`], whitespace, control
+/// characters) and every `-` collapses into a single `-` → leading/trailing `.` and
+/// `-` are trimmed → truncated to [`MAX_SLOT_BYTES`] bytes at a character
+/// boundary. Everything else is kept, including
+/// non-ASCII letters and digits (`中文技能`) and punctuation that is legal in a file
+/// name (`c#`, `c++`), so two different skill names practically never fold onto the
+/// same slot.
+///
+/// A name the fold leaves empty — only punctuation or whitespace, e.g. `"***"` —
+/// carries no identity, so it falls back to a digest of the original name
+/// (`skill-3f9a2c1d`): deterministic across runs, and still distinct per name.
 pub fn sanitize_name(name: &str) -> String {
-    let mut s: String = name
-        .to_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    // Collapse consecutive separators.
-    let folded = {
-        let mut out = String::new();
-        let mut prev_dash = false;
-        for c in s.chars() {
-            if c == '-' {
-                if !prev_dash {
-                    out.push(c);
-                }
+    let mut folded = String::new();
+    let mut prev_dash = false;
+    for c in name.to_lowercase().chars() {
+        if c == '-' || c.is_control() || c.is_whitespace() || UNSAFE_CHARS.contains(&c) {
+            if !prev_dash {
+                folded.push('-');
                 prev_dash = true;
-            } else {
-                out.push(c);
-                prev_dash = false;
             }
+            continue;
         }
-        out
-    };
-    s = folded;
-    let trimmed = s.trim_matches(|c: char| c == '.' || c == '-').to_string();
-    let mut result: String = trimmed.chars().take(255).collect();
-    if result.is_empty() {
-        result = "unnamed-skill".to_string();
+        folded.push(c);
+        prev_dash = false;
     }
-    result
+
+    let trimmed = folded.trim_matches(|c: char| c == '.' || c == '-');
+    // Truncate by bytes, never mid-character: the limit is a filesystem byte
+    // limit, and a partial UTF-8 sequence is not a valid name.
+    let mut slot = String::new();
+    for c in trimmed.chars() {
+        if slot.len() + c.len_utf8() > MAX_SLOT_BYTES {
+            break;
+        }
+        slot.push(c);
+    }
+    if slot.is_empty() {
+        slot = format!("skill-{}", short_digest(name));
+    }
+    slot
+}
+
+/// Stable 64-bit FNV-1a digest of `name`, rendered as eight hex digits — a
+/// dependency-free way to keep the names that fold to nothing distinct.
+fn short_digest(name: &str) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in name.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{:08x}", hash as u32)
 }
 
 /// Directories in `dir` that denote the same skill as `name`: their on-disk name
@@ -281,16 +309,27 @@ pub fn dir_created_secs(dir: &Path) -> Option<u64> {
 
 /// Scan the canonical dir, listing installed skills.
 pub fn list_installed_skills(env: &Env) -> Vec<InstalledSkill> {
-    let canonical = canonical_skills_dir(env);
+    list_skills_in(&canonical_skills_dir(env))
+}
+
+/// List skills parked in the disabled dir.
+pub fn list_disabled_skills(env: &Env) -> Vec<InstalledSkill> {
+    list_skills_in(&disabled_skills_dir(env))
+}
+
+/// Read every skill directory in `dir`.
+///
+/// Dot-entries are skipped: staging leftovers (`.incoming-*`) and the `.misc`
+/// quarantine dir live in the same tree but are never skills.
+fn list_skills_in(dir: &Path) -> Vec<InstalledSkill> {
     let mut out: Vec<InstalledSkill> = Vec::new();
 
-    let entries = match fs::read_dir(&canonical) {
+    let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return out,
     };
 
     for entry in entries.flatten() {
-        // Skip dot-dirs (staging leftovers like `.incoming-*` are never skills).
         if entry.file_name().to_string_lossy().starts_with('.') {
             continue;
         }
@@ -317,11 +356,20 @@ pub fn list_installed_skills(env: &Env) -> Vec<InstalledSkill> {
 
 /// Scan the canonical dir, collecting installed skill directory names.
 pub fn scan_installed(env: &Env) -> Vec<String> {
-    let canonical = canonical_skills_dir(env);
+    scan_names_in(&canonical_skills_dir(env))
+}
+
+/// Scan the disabled dir, collecting disabled skill directory names.
+pub fn scan_disabled(env: &Env) -> Vec<String> {
+    scan_names_in(&disabled_skills_dir(env))
+}
+
+/// Collect the subdirectory names of `dir`, skipping dot-entries (staging
+/// leftovers like `.incoming-*` and the `.misc` quarantine dir are never skills).
+fn scan_names_in(dir: &Path) -> Vec<String> {
     let mut v: Vec<String> = Vec::new();
-    if let Ok(entries) = fs::read_dir(&canonical) {
+    if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
-            // Skip dot-dirs (staging leftovers like `.incoming-*` are never skills).
             if entry.file_name().to_string_lossy().starts_with('.') {
                 continue;
             }
@@ -332,53 +380,6 @@ pub fn scan_installed(env: &Env) -> Vec<String> {
     }
     v.sort();
     v
-}
-
-/// Scan the disabled dir, collecting disabled skill directory names.
-pub fn scan_disabled(env: &Env) -> Vec<String> {
-    let disabled = disabled_skills_dir(env);
-    let mut v: Vec<String> = Vec::new();
-    if let Ok(entries) = fs::read_dir(&disabled) {
-        for entry in entries.flatten() {
-            if entry.path().is_dir() {
-                v.push(entry.file_name().to_string_lossy().into_owned());
-            }
-        }
-    }
-    v.sort();
-    v
-}
-
-/// List skills parked in the disabled dir.
-pub fn list_disabled_skills(env: &Env) -> Vec<InstalledSkill> {
-    let disabled = disabled_skills_dir(env);
-    let mut out: Vec<InstalledSkill> = Vec::new();
-
-    let entries = match fs::read_dir(&disabled) {
-        Ok(e) => e,
-        Err(_) => return out,
-    };
-
-    for entry in entries.flatten() {
-        let skill_dir = entry.path();
-        let skill_md = skill_dir.join("SKILL.md");
-        if !skill_md.is_file() {
-            continue;
-        }
-        let Some(skill) = parse_skill_md(&skill_md) else {
-            continue;
-        };
-        let description = one_line(&skill.description);
-        out.push(InstalledSkill {
-            name: skill.name,
-            estimated_tokens: estimate_tokens(&description),
-            description,
-            installed_at: dir_created_secs(&skill_dir),
-            canonical_path: skill_dir,
-        });
-    }
-    out.sort_by(|a, b| a.name.cmp(&b.name));
-    out
 }
 
 /// Move a skill directory between the canonical dir and the disabled dir.
@@ -459,9 +460,45 @@ mod tests {
             "git-review-before-commit"
         );
         assert_eq!(sanitize_name("../evil"), "evil");
-        assert_eq!(sanitize_name("  "), "unnamed-skill");
         assert_eq!(sanitize_name("A.B_c"), "a.b_c");
         assert_eq!(sanitize_name("-leading-trailing-"), "leading-trailing");
+    }
+
+    #[test]
+    fn sanitize_name_keeps_non_ascii_and_legal_punctuation() {
+        // A non-ASCII name must stay identifiable: folding it to a shared placeholder
+        // used to make every such skill collide on one slot.
+        assert_eq!(sanitize_name("中文技能"), "中文技能");
+        assert_ne!(sanitize_name("中文技能"), sanitize_name("另一技能"));
+        assert_eq!(sanitize_name("C#"), "c#");
+        assert_eq!(sanitize_name("C++"), "c++");
+        assert_ne!(sanitize_name("C#"), sanitize_name("C++"));
+        // Only what a file name cannot hold is folded away.
+        assert_eq!(sanitize_name("a/b\\c"), "a-b-c");
+        assert_eq!(sanitize_name("a:b*c?d"), "a-b-c-d");
+    }
+
+    #[test]
+    fn sanitize_name_falls_back_to_a_deterministic_digest() {
+        // Nothing left to identify the skill by: the slot is still stable per name,
+        // and two different names do not end up sharing one.
+        let blank = sanitize_name("  ");
+        assert!(blank.starts_with("skill-"), "got {blank}");
+        assert_eq!(blank, sanitize_name("  "));
+        assert_ne!(blank, sanitize_name("***"));
+        assert_ne!(blank, sanitize_name(""));
+    }
+
+    #[test]
+    fn sanitize_name_truncates_long_non_ascii_names_by_bytes() {
+        // 255 is a byte limit, not a character count: 300 CJK characters are 900
+        // bytes, so a character-based truncation would produce a name the
+        // filesystem rejects with ENAMETOOLONG.
+        let long: String = "技".repeat(300);
+        let slot = sanitize_name(&long);
+        assert!(slot.len() <= MAX_SLOT_BYTES, "{} bytes", slot.len());
+        assert_eq!(slot.chars().count(), 85); // 85 * 3 bytes = 255 exactly
+        assert!(slot.chars().all(|c| c == '技'));
     }
 
     #[test]
@@ -707,6 +744,25 @@ mod tests {
         assert!(r.success);
         assert!(r.skipped);
         assert!(!tmp.path().join(".agents/skills/pdf-master").exists());
+    }
+
+    #[test]
+    fn install_skill_keeps_non_ascii_names_on_separate_slots() {
+        // Two Chinese-named skills from one source: the second must land on its own
+        // slot instead of being reported as a copy of the first.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        let first = write_skill(&tmp.path().join("first"), "中文技能");
+        let second = write_skill(&tmp.path().join("second"), "另一技能");
+
+        assert!(install_skill(&first, &env).success);
+        let r = install_skill(&second, &env);
+        assert!(r.success, "err={:?}", r.error);
+        assert!(!r.skipped, "the second Chinese-named skill must install");
+
+        let base = tmp.path().join(".agents/skills");
+        assert!(base.join("中文技能/SKILL.md").exists());
+        assert!(base.join("另一技能/SKILL.md").exists());
     }
 
     #[test]
