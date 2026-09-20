@@ -7,7 +7,7 @@ the project adheres to [Semantic Versioning](https://semver.org/): while in
 
 For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
-## [Unreleased]
+## [0.19.0] — 2026-09-20
 
 ### Removed
 
@@ -448,7 +448,8 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 - chore: upgrade git2 to 0.21 to fix RUSTSEC advisories.
 - chore: dual license, GitHub Actions, crates.io release metadata.
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/skill-one/agents-skills/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/skill-one/agents-skills/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/skill-one/agents-skills/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/skill-one/agents-skills/compare/v0.15.0...v0.16.0
