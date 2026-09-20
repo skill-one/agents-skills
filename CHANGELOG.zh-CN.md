@@ -7,6 +7,15 @@
 
 英文版见 [CHANGELOG.md](CHANGELOG.md)。
 
+## [Unreleased]
+
+### 移除
+
+- **(breaking)** 0.18.0 新增的每条技能描述 token 估算量：`list --json` 中的
+  `estimatedTokens`、纯文本输出中每条的 `~N tokens` 与已启用技能总量均已移除，
+  库中的 `ListedSkill.estimated_tokens` 字段随之删除，零依赖的 `core::tokens`
+  启发式模块一并删除。
+
 ## [0.18.0] — 2026-09-19
 
 ### 修复

@@ -195,14 +195,6 @@ pub struct ListedSkill {
     pub name: String,
     /// Skill description (from `SKILL.md` frontmatter).
     pub description: String,
-    /// Estimated tokens the description costs in an agent's context.
-    ///
-    /// Descriptions are a skill's always-on cost: harnesses keep every linked
-    /// skill's name and description in context, while the `SKILL.md` body is
-    /// only loaded when the skill triggers. Estimated with a dependency-free
-    /// heuristic (~4 ASCII characters or 1 non-ASCII character per token), so
-    /// treat it as an order-of-magnitude figure.
-    pub estimated_tokens: u32,
     /// Directory the skill currently lives in (canonical, or `disabled-skills`).
     pub path: PathBuf,
     /// Whether the skill is enabled (`true`) or parked in `disabled-skills` (`false`).

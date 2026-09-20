@@ -7,6 +7,16 @@ the project adheres to [Semantic Versioning](https://semver.org/): while in
 
 For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## [Unreleased]
+
+### Removed
+
+- **(breaking)** the per-skill description token estimate added in 0.18.0.
+  `estimatedTokens` is gone from `list --json`, the per-skill `~N tokens` figure
+  and the enabled-skills total are gone from the plain output,
+  `ListedSkill.estimated_tokens` is gone from the library API, and the
+  dependency-free `core::tokens` heuristic module is deleted with it.
+
 ## [0.18.0] — 2026-09-19
 
 ### Fixed

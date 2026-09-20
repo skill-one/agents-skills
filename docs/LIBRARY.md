@@ -76,18 +76,13 @@ canonical directory, as reported by [`Manager::agent_status`].
 ### Result-struct fields
 
 [`Manager::list`] returns [`ListedSkill`] values — the exact shape `list --json`
-serializes: `name`, `description` (collapsed onto a single line),
-`estimated_tokens` (see below), `path` (the directory the skill currently lives
-in: canonical, or `disabled-skills`), `enabled`, and `installed_at` (Unix
-seconds, UTC; `None` when the filesystem records no creation time).
+serializes: `name`, `description` (collapsed onto a single line), `path` (the
+directory the skill currently lives in: canonical, or `disabled-skills`),
+`enabled`, and `installed_at` (Unix seconds, UTC; `None` when the filesystem
+records no creation time).
 `installed_at` approximates when the skill landed on disk: exact for `add`
 installs, but a skill adopted from an agent directory keeps that directory's
 original creation time.
-
-`estimated_tokens` sizes a skill's always-on context cost: harnesses keep every
-linked skill's name and description in context, while the `SKILL.md` body is
-only loaded once the skill triggers. It is a dependency-free heuristic estimate
-(~4 ASCII characters, or 1 non-ASCII character, per token), not an exact count.
 
 [`Manager::add`] returns [`AddOutcome`]: `skills` (everything discovered),
 `selected`, `installed`, `skipped` (names already installed — `add` never

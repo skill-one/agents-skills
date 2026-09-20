@@ -157,12 +157,9 @@ fn lib_list_json_shape() {
     let listed = manager.list().unwrap();
     assert_eq!(listed[0].name, "pdf");
     assert_eq!(listed[0].description, "does pdf");
-    // "does pdf" is 8 ASCII chars -> ceil(8 / 4) = 2 tokens.
-    assert_eq!(listed[0].estimated_tokens, 2);
     let json = serde_json::to_string_pretty(&listed).unwrap();
     assert!(json.contains("\"name\": \"pdf\""));
     assert!(json.contains("\"description\": \"does pdf\""));
-    assert!(json.contains("\"estimatedTokens\": 2"));
     assert!(json.contains("\"enabled\": true"));
     assert!(json.contains("\"installedAt\""));
 }

@@ -34,53 +34,10 @@ fn list_json_reports_skill_fields() {
         .success()
         .stdout(predicate::str::contains("\"name\": \"pdf\""))
         .stdout(predicate::str::contains("\"description\": \"does pdf\""))
-        // "does pdf" is 8 ASCII chars -> ceil(8 / 4) = 2 tokens.
-        .stdout(predicate::str::contains("\"estimatedTokens\": 2"))
         .stdout(predicate::str::contains("\"enabled\": true"))
         // The key is always emitted; the value may be null where the
         // filesystem records no creation time.
         .stdout(predicate::str::contains("\"installedAt\""));
-}
-
-#[test]
-fn list_plain_reports_description_token_cost() {
-    let p = TestProject::new();
-    let src = p.write_skill_source("my-skill", "pdf");
-
-    p.skills()
-        .args(["add", src.to_str().unwrap()])
-        .assert()
-        .success();
-
-    p.skills()
-        .arg("list")
-        .assert()
-        .success()
-        // Per-skill estimate plus the always-on total for enabled skills.
-        .stdout(predicate::str::contains("~2 tokens"))
-        .stdout(predicate::str::contains(
-            "Enabled skills keep ~2 tokens of descriptions in context.",
-        ));
-}
-
-#[test]
-fn list_plain_excludes_disabled_skills_from_the_total() {
-    let p = TestProject::new();
-    let src = p.write_skill_source("my-skill", "pdf");
-
-    p.skills()
-        .args(["add", src.to_str().unwrap()])
-        .assert()
-        .success();
-    p.skills().args(["disable", "pdf"]).assert().success();
-
-    // The parked skill still shows its own estimate, but nothing is in context.
-    p.skills()
-        .arg("list")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("~2 tokens"))
-        .stdout(predicate::str::contains("in context").not());
 }
 
 #[test]

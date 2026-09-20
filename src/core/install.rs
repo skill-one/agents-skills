@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 
 use crate::core::agents::{Env, canonical_skills_dir, disabled_skills_dir};
 use crate::core::discover::{Skill, parse_skill_md};
-use crate::core::tokens::estimate_tokens;
 use crate::error::Result;
 
 /// Outcome of installing a single skill into the canonical dir.
@@ -278,9 +277,6 @@ pub struct InstalledSkill {
     pub name: String,
     /// Skill description, collapsed onto a single line.
     pub description: String,
-    /// Estimated tokens the description costs in an agent's context
-    /// (see [`estimate_tokens`]).
-    pub estimated_tokens: u32,
     /// Directory the skill currently lives in (canonical or disabled).
     pub canonical_path: PathBuf,
     /// The skill directory's creation time as Unix seconds, when the platform
@@ -344,7 +340,6 @@ fn list_skills_in(dir: &Path) -> Vec<InstalledSkill> {
         let description = one_line(&skill.description);
         out.push(InstalledSkill {
             name: skill.name,
-            estimated_tokens: estimate_tokens(&description),
             description,
             installed_at: dir_created_secs(&skill_dir),
             canonical_path: skill_dir,

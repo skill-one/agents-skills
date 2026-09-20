@@ -10,7 +10,6 @@ pub mod install;
 pub mod link;
 pub mod path_util;
 pub mod source;
-pub mod tokens;
 
 #[cfg(test)]
 pub mod test_utils;
