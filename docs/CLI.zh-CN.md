@@ -102,11 +102,14 @@ docx Create and edit Word documents, including tables and headers.
 
 | 字段              | 说明                                        |
 | --------------- | ----------------------------------------- |
-| `name`          | 技能名（取自 `SKILL.md` frontmatter）            |
+| `name`          | 技能名 —— 即磁盘上的目录名（`remove`/`disable`/`enable` 使用同一名称） |
 | `description`   | 技能描述，已规整为单行                               |
-| `path`          | 技能当前所在目录（规范目录，或 `disabled-skills`）        |
 | `enabled`       | `true` 在规范目录，`false` 停放在 `disabled-skills` |
 | `installedAt`   | 技能目录的创建时间，Unix 秒（UTC）；无法获取时为 `null`       |
+
+`name` 是技能在磁盘上的目录名——即 `remove`/`disable`/`enable` 操作的身份；
+对从 agent 目录并入的技能，它可能与 `SKILL.md` frontmatter 中的名称不同。目录
+本身不再序列化：纯文本输出会展示它，其值由 `name` 与 `enabled` 拼回。
 
 `installedAt` 是"技能落到磁盘的时间"的近似值：`add` 安装是精确的，但从 agent
 目录并入的技能会保留该目录原本的创建时间，且对同名技能重新安装会刷新它；在

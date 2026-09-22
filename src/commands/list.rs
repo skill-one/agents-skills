@@ -3,7 +3,7 @@
 use crate::cli::{BOLD, CYAN, DIM, GREEN, ListArgs, RESET, YELLOW};
 use crate::commands::{fail_agents, shorten_path};
 use agents_skills::error::Result;
-use agents_skills::{Env, ListedSkill, Manager};
+use agents_skills::{ListedSkill, Manager};
 
 /// Longest description rendered before it is ellipsized.
 const DESCRIPTION_MAX: usize = 100;
@@ -28,13 +28,14 @@ pub fn run(manager: &Manager, args: ListArgs) -> Result<()> {
     println!("{BOLD}Skills{RESET}");
     println!();
     for skill in &listed {
-        print_skill(skill, manager.env());
+        print_skill(skill, manager);
     }
     println!();
     Ok(())
 }
 
-fn print_skill(skill: &ListedSkill, env: &Env) {
+fn print_skill(skill: &ListedSkill, manager: &Manager) {
+    let env = manager.env();
     let status = if skill.enabled {
         format!("{GREEN}enabled{RESET}")
     } else {
@@ -51,7 +52,7 @@ fn print_skill(skill: &ListedSkill, env: &Env) {
     };
     println!(
         "  {DIM}{}{RESET} [{status}]{installed}",
-        shorten_path(&skill.path, env)
+        shorten_path(&manager.skill_dir(skill), env)
     );
 }
 

@@ -104,13 +104,17 @@ docx Create and edit Word documents, including tables and headers.
 
 `list --json` emits the same fields per skill:
 
-| Field             | Description                                                                    |
-| ----------------- | ------------------------------------------------------------------------------ |
-| `name`            | Skill name (from `SKILL.md` frontmatter)                                       |
-| `description`     | Skill description, collapsed onto a single line                                |
-| `path`            | Directory the skill currently lives in (canonical, or `disabled-skills`)       |
-| `enabled`         | `true` in the canonical directory, `false` parked in `disabled-skills`         |
-| `installedAt`     | Skill directory creation time as Unix seconds (UTC), or `null` when unavailable |
+| Field         | Description                                                                    |
+| ------------- | ------------------------------------------------------------------------------ |
+| `name`        | Skill name — its on-disk directory name (what `remove`/`disable`/`enable` use) |
+| `description` | Skill description, collapsed onto a single line                                |
+| `enabled`     | `true` in the canonical directory, `false` parked in `disabled-skills`         |
+| `installedAt` | Skill directory creation time as Unix seconds (UTC), or `null` when unavailable |
+
+`name` is the skill's on-disk directory name — the identity `remove`/`disable`/
+`enable` operate on; it may differ from the `SKILL.md` frontmatter name for a
+skill adopted from an agent directory. The directory itself is not serialized:
+the plain output shows it, and it is reconstructed from `name` plus `enabled`.
 
 `installedAt` approximates when the skill landed on disk: it is exact for `add`
 installs, but a skill adopted from an agent directory keeps that directory's

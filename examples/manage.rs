@@ -42,7 +42,7 @@ fn main() -> agents_skills::Result<()> {
     // List installed skills (serde-serializable; same shape as `list --json`).
     let skills = manager.list()?;
     for s in &skills {
-        println!("  - {}: {}", s.name, s.path.display());
+        println!("  - {}: {}", s.name, manager.skill_dir(s).display());
     }
 
     // Remove it again.

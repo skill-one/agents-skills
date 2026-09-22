@@ -7,6 +7,16 @@ the project adheres to [Semantic Versioning](https://semver.org/): while in
 
 For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## [Unreleased]
+
+### Changed
+
+- **(breaking)** `ListedSkill.name` is now the skill's on-disk directory name
+  (the identity `remove`/`disable`/`enable` use), not the `SKILL.md` frontmatter
+  name — so `list` and `list --json` name a skill the same way the other
+  commands do. The now-redundant `path` field is gone from `ListedSkill` and
+  `list --json`; resolve a skill's directory with the new `Manager::skill_dir`.
+
 ## [0.19.0] — 2026-09-20
 
 ### Removed

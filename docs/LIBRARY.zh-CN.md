@@ -71,9 +71,10 @@ fn main() -> agents_skills::Result<()> {
 ### 结果结构体字段
 
 [`Manager::list`] 返回 [`ListedSkill`]，即 `list --json` 序列化的精确形状：
-`name`、`description`（已规整为单行）、`path`（技能当前所在目录：规范目录或
-`disabled-skills`）、`enabled`、`installed_at`
-（Unix 秒，UTC；文件系统不记录创建时间时为 `None`）。`installed_at` 是"技能落到
+`name`（磁盘上的目录名——即 `remove`/`disable`/`enable` 操作的身份）、
+`description`（已规整为单行）、`enabled`、`installed_at`
+（Unix 秒，UTC；文件系统不记录创建时间时为 `None`）。技能目录由名称与 `enabled`
+推导：可用 [`Manager::skill_dir`] 解析。`installed_at` 是"技能落到
 磁盘的时间"的近似值：`add` 安装是精确的，但从 agent 目录并入的技能会保留该目录
 原本的创建时间。
 
@@ -151,6 +152,7 @@ cargo run --example add_skill   # 通过 Manager 安装到真实环境
 [`Manager::agent`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.agent
 [`Manager::agent_status`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.agent_status
 [`Manager::list`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.list
+[`Manager::skill_dir`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.skill_dir
 [`Manager::remove`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.remove
 [`Manager::disable`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.disable
 [`Manager::enable`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.enable

@@ -273,12 +273,11 @@ fn remove_path(p: &Path) {
 /// An installed skill (used by list).
 #[derive(Debug)]
 pub struct InstalledSkill {
-    /// Skill name.
+    /// Skill name — the on-disk directory name (the identity `remove` /
+    /// `disable` / `enable` operate on).
     pub name: String,
     /// Skill description, collapsed onto a single line.
     pub description: String,
-    /// Directory the skill currently lives in (canonical or disabled).
-    pub canonical_path: PathBuf,
     /// The skill directory's creation time as Unix seconds, when the platform
     /// and filesystem record one.
     ///
@@ -337,12 +336,15 @@ fn list_skills_in(dir: &Path) -> Vec<InstalledSkill> {
         let Some(skill) = parse_skill_md(&skill_md) else {
             continue;
         };
+        // The on-disk directory name is the skill's identity — the same name
+        // `remove`/`disable`/`enable` use. It may differ from the frontmatter
+        // name for a skill adopted from an agent dir.
+        let name = entry.file_name().to_string_lossy().into_owned();
         let description = one_line(&skill.description);
         out.push(InstalledSkill {
-            name: skill.name,
+            name,
             description,
             installed_at: dir_created_secs(&skill_dir),
-            canonical_path: skill_dir,
         });
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));

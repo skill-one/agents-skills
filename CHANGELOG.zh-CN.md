@@ -7,6 +7,16 @@
 
 英文版见 [CHANGELOG.md](CHANGELOG.md)。
 
+## [Unreleased]
+
+### 变更
+
+- **(breaking)** `ListedSkill.name` 现在取技能在磁盘上的目录名（即
+  `remove`/`disable`/`enable` 操作的身份），而非 `SKILL.md` frontmatter 中的
+  名称——`list` 与 `list --json` 现与其他命令对技能使用同一名称。冗余的
+  `path` 字段已从 `ListedSkill` 与 `list --json` 中移除；可用新增的
+  `Manager::skill_dir` 解析技能目录。
+
 ## [0.19.0] — 2026-09-20
 
 ### 移除

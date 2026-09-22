@@ -5,7 +5,10 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::core::agents::{AGENTS, Env, config_home, home, is_installed, is_native};
+use crate::core::agents::{
+    AGENTS, Env, canonical_skills_dir, config_home, disabled_skills_dir, home, is_installed,
+    is_native,
+};
 use crate::core::discover::{Skill, discover_skills, filter_skills};
 use crate::core::fetch::fetch_source;
 use crate::core::github::{fetch_skill_via_api, fetch_subdir_via_api};
@@ -476,8 +479,8 @@ impl Manager {
     ///
     /// let manager = Manager::new();
     /// let skills = manager.list()?;
-    /// for skill in skills {
-    ///     println!("{} -> {}", skill.name, skill.path.display());
+    /// for skill in &skills {
+    ///     println!("{} -> {}", skill.name, manager.skill_dir(skill).display());
     /// }
     /// # Ok::<(), agents_skills::Error>(())
     /// ```
@@ -490,7 +493,6 @@ impl Manager {
             out.push(ListedSkill {
                 name: s.name,
                 description: s.description,
-                path: s.canonical_path,
                 enabled: true,
                 installed_at: s.installed_at,
             });
@@ -499,13 +501,28 @@ impl Manager {
             out.push(ListedSkill {
                 name: s.name,
                 description: s.description,
-                path: s.canonical_path,
                 enabled: false,
                 installed_at: s.installed_at,
             });
         }
         out.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(out)
+    }
+
+    /// The on-disk directory of a listed skill.
+    ///
+    /// Resolves [`ListedSkill::name`] (already the on-disk directory name)
+    /// against the canonical dir when the skill is enabled, or the sibling
+    /// `disabled-skills` dir when it is disabled.
+    ///
+    /// [`ListedSkill::name`]: crate::ListedSkill::name
+    pub fn skill_dir(&self, skill: &ListedSkill) -> PathBuf {
+        let base = if skill.enabled {
+            canonical_skills_dir(&self.env)
+        } else {
+            disabled_skills_dir(&self.env)
+        };
+        base.join(&skill.name)
     }
 
     /// Disable installed skills.

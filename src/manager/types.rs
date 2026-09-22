@@ -191,12 +191,12 @@ pub struct AgentOutcome {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListedSkill {
-    /// Skill name (from `SKILL.md` frontmatter).
+    /// Skill name — its on-disk directory name, the identity used by
+    /// `remove`/`disable`/`enable`. It may differ from the `SKILL.md`
+    /// frontmatter name for a skill adopted from an agent dir.
     pub name: String,
     /// Skill description (from `SKILL.md` frontmatter).
     pub description: String,
-    /// Directory the skill currently lives in (canonical, or `disabled-skills`).
-    pub path: PathBuf,
     /// Whether the skill is enabled (`true`) or parked in `disabled-skills` (`false`).
     pub enabled: bool,
     /// The skill directory's creation time, as Unix seconds (UTC) — an

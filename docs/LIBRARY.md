@@ -76,10 +76,11 @@ canonical directory, as reported by [`Manager::agent_status`].
 ### Result-struct fields
 
 [`Manager::list`] returns [`ListedSkill`] values — the exact shape `list --json`
-serializes: `name`, `description` (collapsed onto a single line), `path` (the
-directory the skill currently lives in: canonical, or `disabled-skills`),
+serializes: `name` (the on-disk directory name — the identity
+`remove`/`disable`/`enable` use), `description` (collapsed onto a single line),
 `enabled`, and `installed_at` (Unix seconds, UTC; `None` when the filesystem
-records no creation time).
+records no creation time). The skill's directory is derived from its name and
+`enabled`: resolve it with [`Manager::skill_dir`].
 `installed_at` approximates when the skill landed on disk: exact for `add`
 installs, but a skill adopted from an agent directory keeps that directory's
 original creation time.
@@ -167,6 +168,7 @@ telemetry** — no data ever leaves your machine.
 [`Manager::agent`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.agent
 [`Manager::agent_status`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.agent_status
 [`Manager::list`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.list
+[`Manager::skill_dir`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.skill_dir
 [`Manager::remove`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.remove
 [`Manager::disable`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.disable
 [`Manager::enable`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.enable
