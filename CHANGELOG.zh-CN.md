@@ -7,7 +7,7 @@
 
 英文版见 [CHANGELOG.md](CHANGELOG.md)。
 
-## [Unreleased]
+## [0.20.0] — 2026-09-22
 
 ### 变更
 
@@ -398,7 +398,8 @@
 - chore:升级 git2 至 0.21 以修复 RUSTSEC 安全通告。
 - chore:双许可证、GitHub Actions、crates.io 发布元数据。
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/skill-one/agents-skills/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/skill-one/agents-skills/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/skill-one/agents-skills/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/skill-one/agents-skills/compare/v0.16.0...v0.17.0
