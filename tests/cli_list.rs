@@ -21,7 +21,7 @@ fn list_empty_prints_hint() {
 #[test]
 fn list_json_reports_skill_fields() {
     let p = TestProject::new();
-    let src = p.write_skill_source("my-skill", "pdf");
+    let src = p.write_skill_source("pdf", "pdf");
 
     p.skills()
         .args(["add", src.to_str().unwrap()])
@@ -43,7 +43,7 @@ fn list_json_reports_skill_fields() {
 #[test]
 fn list_plain_prints_description() {
     let p = TestProject::new();
-    let src = p.write_skill_source("my-skill", "pdf");
+    let src = p.write_skill_source("pdf", "pdf");
 
     p.skills()
         .args(["add", src.to_str().unwrap()])
@@ -60,7 +60,7 @@ fn list_plain_prints_description() {
 #[test]
 fn list_plain_prints_skill() {
     let p = TestProject::new();
-    let src = p.write_skill_source("my-skill", "pdf");
+    let src = p.write_skill_source("pdf", "pdf");
 
     p.skills()
         .args(["add", src.to_str().unwrap()])
@@ -79,7 +79,7 @@ fn list_plain_prints_skill() {
 #[test]
 fn list_plain_hides_agents() {
     let p = TestProject::new();
-    let src = p.write_skill_source("my-skill", "pdf");
+    let src = p.write_skill_source("pdf", "pdf");
 
     p.skills()
         .args(["add", src.to_str().unwrap()])
@@ -100,7 +100,7 @@ fn list_plain_hides_agents() {
 #[test]
 fn list_reports_disabled_skills() {
     let p = TestProject::new();
-    let src = p.write_skill_source("my-skill", "pdf");
+    let src = p.write_skill_source("pdf", "pdf");
 
     p.skills()
         .args(["add", src.to_str().unwrap()])

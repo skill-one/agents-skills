@@ -17,8 +17,8 @@
 //!     .cwd("/tmp/project")
 //!     .build();
 //!
-//! // Install every skill from a source (see [`Manager::add`] for a local example).
-//! // List what's installed.
+//! // Install one skill — a local directory or `owner/repo@<skill>`
+//! // (see [`Manager::add`] for a local example). Then list what's installed.
 //! let skills = manager.list()?;
 //!
 //! # Ok::<(), agents_skills::Error>(())
@@ -42,8 +42,8 @@ pub mod manager;
 // High-level facade.
 pub use manager::{
     AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus,
-    DisableOutcome, DisableRequest, EnableOutcome, EnableRequest, InstallFailure, InstallSuccess,
-    ListedSkill, Manager, ManagerBuilder, RemoveOutcome, RemoveRequest,
+    DisableOutcome, DisableRequest, EnableOutcome, EnableRequest, ListedSkill, Manager,
+    ManagerBuilder, RemoveOutcome, RemoveRequest,
 };
 
 // Data types carried by the facade's outcomes (implementation lives in the private core).

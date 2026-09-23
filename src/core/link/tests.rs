@@ -311,7 +311,7 @@ fn link_agent_drops_conflicts_with_disabled_skills() {
     // linking an agent that holds its own copy of the same name.
     let tmp = tempfile::TempDir::new().unwrap();
     let env = env_at(&tmp);
-    let src = tmp.path().join("src-skill");
+    let src = tmp.path().join("pdf");
     let skill = write_and_parse_skill(&src, "pdf");
     install_skill(&skill, &env);
     move_skill("pdf", false, &env).unwrap();
@@ -350,7 +350,7 @@ fn link_agent_drops_legacy_per_skill_links() {
     // would create a self-referential symlink.
     let tmp = tempfile::TempDir::new().unwrap();
     let env = env_at(&tmp);
-    let src = tmp.path().join("src-skill");
+    let src = tmp.path().join("pdf");
     let skill = write_and_parse_skill(&src, "pdf");
     install_skill(&skill, &env);
     fs::create_dir_all(tmp.path().join(".cursor/skills")).unwrap();

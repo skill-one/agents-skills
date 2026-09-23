@@ -2,135 +2,83 @@
 
 English | [简体中文](LIBRARY.zh-CN.md)
 
-For **library users**: embed the skill-management capabilities into your own
-Rust tooling. For CLI usage see the [README](../README.md), for the command
-reference see [CLI.md](CLI.md).
+Embed the skill-manager into your own Rust tooling. For CLI usage see the
+[README](../README.md); the full command reference is [CLI.md](CLI.md).
 
 ## Adding the dependency
 
 ```toml
 [dependencies]
-agents-skills = "0.10"
+agents-skills = "0.21"
 ```
 
 ## Quick start
 
 ```rust
-use agents_skills::{AddRequest, AgentRequest, Manager};
+use agents_skills::{AddRequest, Manager};
 
-fn main() -> agents_skills::Result<()> {
-    let manager = Manager::builder().build(); // equivalent to Manager::new()
-
-    manager.agent(&AgentRequest::default())?;        // link all installed agents
-    let outcome = manager.add(&AddRequest::new("anthropics/skills"))?; // install a skill pack
-    println!("installed {} skill(s)", outcome.installed.len());
-
-    // agent_status lists each agent's link status; unlinked agents that carry
-    // their own content expose their private skills and other files — what
-    // linking would adopt into the canonical directory.
-    for s in manager.agent_status(false) {
-        println!("{}: linked={}", s.name, s.linked);
-        if !s.internal_skills.is_empty() {
-            println!("  skills: {}", s.internal_skills.join(", "));
-        }
-        if !s.internal_others.is_empty() {
-            println!("  others: {}", s.internal_others.join(", "));
-        }
-    }
-    Ok(())
-}
+let manager = Manager::new();
+let outcome = manager.add(&AddRequest::new("anthropics/skills@pdf"))?;
+println!("{} (skipped={})", outcome.skill.name, outcome.skipped);
+let skills = manager.list()?;
 ```
 
-## High-level API: [`Manager`]
+## API surface: [`Manager`]
 
-Every method takes a pure-data request struct and returns a structured result;
-all request structs are `Default + Clone` and can be built with field
-overrides.
+Every method takes a `Default + Clone` request struct and returns a structured
+result.
 
-| Method                    | Request            | Returns                                       |
-| ------------------------- | ------------------ | --------------------------------------------- |
-| [`Manager::add`]          | [`AddRequest`]     | [`AddOutcome`] (installed + skipped + failed) |
-| [`Manager::agent`]        | [`AgentRequest`]   | [`AgentOutcome`] (per-agent results)          |
-| [`Manager::agent_status`] | —                  | `Vec<`[`AgentStatus`]`>`                      |
-| [`Manager::list`]         | —                  | `Vec<`[`ListedSkill`]`>` (serializable)       |
-| [`Manager::remove`]       | [`RemoveRequest`]  | [`RemoveOutcome`] (removed names)             |
-| [`Manager::disable`]      | [`DisableRequest`] | [`DisableOutcome`] (disabled names)           |
-| [`Manager::enable`]       | [`EnableRequest`]  | [`EnableOutcome`] (enabled names)             |
+| Method                    | Request            | Returns                                   |
+| ------------------------- | ------------------ | ----------------------------------------- |
+| [`Manager::add`]          | [`AddRequest`]     | [`AddOutcome`] (one skill + skipped flag) |
+| [`Manager::agent`]        | [`AgentRequest`]   | [`AgentOutcome`] (per-agent results)      |
+| [`Manager::agent_status`] | —                  | `Vec<`[`AgentStatus`]`>`                  |
+| [`Manager::list`]         | —                  | `Vec<`[`ListedSkill`]`>` (serializable)   |
+| [`Manager::remove`]       | [`RemoveRequest`]  | [`RemoveOutcome`] (removed names)         |
+| [`Manager::disable`]      | [`DisableRequest`] | [`DisableOutcome`] (disabled names)       |
+| [`Manager::enable`]       | [`EnableRequest`]  | [`EnableOutcome`] (enabled names)         |
 
-### Request-struct fields
+Request fields:
 
-| Struct             | Fields                                                                                            |
-| ------------------ | ------------------------------------------------------------------------------------------------- |
-| [`AddRequest`]     | `source: String`, `skills: Vec<String>` (`"*"` or specific names, empty = all), `list_only: bool` |
-| [`AgentRequest`]   | `agents: Vec<String>`, `unlink: bool`                                                             |
-| [`RemoveRequest`]  | `skills: Vec<String>`, `all: bool`                                                                |
-| [`DisableRequest`] | `skills: Vec<String>`, `all: bool`                                                                |
-| [`EnableRequest`]  | `skills: Vec<String>`, `all: bool`                                                                |
+| Struct             | Fields                                                                                                           |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| [`AddRequest`]     | `source: String` (a local skill directory or `owner/repo@<skill>`), `reference: Option<String>` (branch/tag/SHA) |
+| [`AgentRequest`]   | `agents: Vec<String>` (`"*"` or names, empty = auto-detect), `unlink: bool`                                      |
+| [`RemoveRequest`]  | `skills: Vec<String>`, `all: bool`                                                                               |
+| [`DisableRequest`] | `skills: Vec<String>`, `all: bool`                                                                               |
+| [`EnableRequest`]  | `skills: Vec<String>`, `all: bool`                                                                               |
 
-Every command operates on the canonical directory `~/.agents/skills`; there is
-no scope option. The `agents` field of [`AgentRequest`] restricts the agents
-(`"*"` or specific names, empty = auto-detect). Which agents see a skill is
-not a per-skill property — every linked or native agent sees the whole
-canonical directory, as reported by [`Manager::agent_status`].
+Notes:
 
-### Result-struct fields
-
-[`Manager::list`] returns [`ListedSkill`] values — the exact shape `list --json`
-serializes: `name` (the on-disk directory name — the identity
-`remove`/`disable`/`enable` use), `description` (collapsed onto a single line),
-`enabled`, and `installed_at` (Unix seconds, UTC; `None` when the filesystem
-records no creation time). The skill's directory is derived from its name and
-`enabled`: resolve it with [`Manager::skill_dir`].
-`installed_at` approximates when the skill landed on disk: exact for `add`
-installs, but a skill adopted from an agent directory keeps that directory's
-original creation time.
-
-[`Manager::add`] returns [`AddOutcome`]: `skills` (everything discovered),
-`selected`, `installed`, `skipped` (names already installed — `add` never
-overwrites), and `failed`.
-
-### Correspondence with the CLI
-
-- **`add` takes a single source**: the CLI's `add <source...>` installs
-  several sources at once, while the library's [`AddRequest`] accepts a single
-  `source: String`. To install multiple sources, call `manager.add(...)`
-  several times; each call returns its own [`AddOutcome`].
-- **`AgentRequest` link conventions**: the CLI's `agent` command requires
-  exactly one of `--link`/`--unlink`/`--status`; the library splits `--status`
-  into the separate [`Manager::agent_status`], so [`AgentRequest`] only
-  distinguishes link from unlink: `unlink: false` (default) links,
-  `unlink: true` unlinks. Linking *adopts* whatever the agent's skills
-  directory already holds, and that is one-way: skill directories are moved
-  into the canonical directory, non-skill entries into `.misc/<agent>/` inside
-  it, and name clashes are dropped in favour of the existing copy (the
-  canonical copy wins; a skill disabled in `disabled-skills` stays disabled
-  rather than being re-imported). Unlinking does not move adopted content back.
-  [`LinkOutcome::Refused`] is returned only when the agent directory is a
-  symlink pointing elsewhere.
+- [`AddOutcome`] is one skill: `source`, `skill`, `canonical_path`, `skipped`
+  (`true` when the name already exists — `add` never overwrites). Failures are
+  `Err`. [`ListedSkill`] has the same fields as `list --json` (see
+  [CLI.md](CLI.md#list)); resolve a skill's directory with
+  [`Manager::skill_dir`].
+- The CLI's `--link`/`--unlink`/`--status` split into [`Manager::agent`] and
+  [`Manager::agent_status`] — [`AgentRequest`] only carries `unlink: bool`.
+  Adoption semantics (one-way, canonical copy wins) are the same as the CLI's;
+  [`LinkOutcome::Refused`] is returned only when the agent directory itself is
+  a symlink pointing elsewhere.
 
 ### Common operations
 
 ```rust
 use agents_skills::{AddRequest, DisableRequest, EnableRequest, RemoveRequest};
 
-// Install specific skills / list without installing
-let outcome = manager.add(&AddRequest {
-    source: "anthropics/skills".into(),
-    skills: vec!["pdf".into()],   // omitted = install all
-    list_only: false,             // true = only list available skills
+// Pin a branch/tag/SHA with `reference` (None = default branch).
+manager.add(&AddRequest {
+    source: "anthropics/skills@pdf".into(),
+    reference: Some("v1.2".into()),
     ..Default::default()
 })?;
 
-// List skills (--json is the CLI counterpart)
 let skills = manager.list()?;
-let json = serde_json::to_string_pretty(&skills)?; // the CLI's list --json
+let json = serde_json::to_string_pretty(&skills)?; // same shape as list --json
 
-// Remove skills
-manager.remove(&RemoveRequest { skills: vec!["pdf".into()], ..Default::default() })?;
-
-// Disable / enable (moves the skill directory out of / back into the canonical directory)
-manager.disable(&DisableRequest { skills: vec!["pdf".into()], ..Default::default() })?;
-manager.enable(&EnableRequest { skills: vec!["pdf".into()], ..Default::default() })?;
+manager.remove(&RemoveRequest  { skills: vec!["pdf".into()], ..Default::default() })?;
+manager.disable(&DisableRequest{ skills: vec!["pdf".into()], ..Default::default() })?;
+manager.enable(&EnableRequest  { skills: vec!["pdf".into()], ..Default::default() })?;
 ```
 
 ## Context injection: [`ManagerBuilder`]
@@ -141,27 +89,22 @@ let manager = Manager::builder()
     .config("/tmp/config")
     .cwd("/tmp/project")
     .env_var("CLAUDE_CONFIG_DIR", "/tmp/claude")
+    .probe_system_dirs(false) // skip system locations for hermetic tests
     .build();
 ```
 
-Use it for sandboxes/tests to avoid touching the real environment;
-`Manager::new()` equals `Manager::builder().build()`. In a sandbox, adding
-`.probe_system_dirs(false)` makes agent probing skip system locations entirely
-(e.g. `/Applications/ZCode.app`), keeping results hermetic and reproducible.
-
-## Examples
+`Manager::new()` equals `Manager::builder().build()`. Runnable examples:
 
 ```bash
-cargo run --example manage      # demonstrates add → list → remove on a temp directory (no side effects)
-cargo run --example add_skill   # installs into the real environment via the Manager
+cargo run --example manage      # add → list → remove on a temp directory (no side effects)
+cargo run --example add_skill   # installs into the real environment
 ```
 
 ## Behavioral contract
 
-The library stays **pure data**: it never prints, never calls
-`process::exit`; results are structured and errors surface through `Result` —
-rendering and exit codes are the caller's job. The library has **no
-telemetry** — no data ever leaves your machine.
+The library is pure data: it never prints and never calls `process::exit`;
+rendering and exit codes are the caller's job. It has no telemetry — no data
+leaves the machine.
 
 [`Manager`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html
 [`Manager::add`]: https://docs.rs/agents-skills/latest/agents_skills/struct.Manager.html#method.add

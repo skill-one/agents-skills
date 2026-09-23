@@ -1,11 +1,13 @@
-//! GitHub API fast path: fetch only what is needed instead of the whole
-//! repository archive — the directory of a `@skill`-selected skill, or every
-//! file under a subpath.
+//! GitHub API: fetch exactly one named skill from a repository.
 //!
 //! Listing is one recursive `git/trees` call. When GitHub truncates that tree
 //! (large repos) we switch to per-directory `contents` calls — the workaround
-//! the official docs recommend — instead of failing or downloading the whole
-//! repository. Files are then fetched concurrently from
+//! the official docs recommend — instead of failing. A skill's name is its
+//! **directory name**: the requested name matches a directory that directly
+//! contains `SKILL.md` (case-insensitive, shallowest match wins), and a
+//! `SKILL.md` at the repository root is selected by the repository name.
+//! Nothing is downloaded until the directory is located; the matched
+//! directory's files are then fetched concurrently from
 //! `raw.githubusercontent.com`, Git LFS pointers are resolved through
 //! `media.githubusercontent.com`, and the git mode from the tree listing
 //! restores the executable bit that zip archives lose.
@@ -16,12 +18,12 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde_json::Value;
 
-use crate::core::discover::{filter_skills, parse_skill_md_inner};
-use crate::core::source::{Source, SourceType, owner_repo};
+use crate::core::discover::{Skill, read_description, read_skill};
 use crate::error::{Result, SkillsError};
 
 /// Injected HTTP GET: returns the response body of `url`.
@@ -51,20 +53,10 @@ struct RepoRef {
 }
 
 impl RepoRef {
-    /// Resolve the ref (explicit, or the repository's default branch).
-    ///
-    /// `Ok(None)` when the source is not GitHub.
-    fn resolve(parsed: &Source, get: Get) -> Result<Option<Self>> {
-        if parsed.ty != SourceType::Github {
-            return Ok(None);
-        }
-        let owner_repo = owner_repo(&parsed.url);
-        let (owner, repo) = owner_repo
-            .split_once('/')
-            .unwrap_or((owner_repo.as_str(), ""));
-
-        let r#ref = match &parsed.r#ref {
-            Some(r) => r.clone(),
+    /// Resolve the ref (explicitly requested, or the repository's default branch).
+    fn resolve(owner: &str, repo: &str, reference: Option<&str>, get: Get) -> Result<Self> {
+        let r#ref = match reference {
+            Some(r) => r.to_string(),
             None => {
                 let body = get(&repo_url(owner, repo))?;
                 let v: Value = serde_json::from_slice(&body)?;
@@ -74,119 +66,112 @@ impl RepoRef {
                     .ok_or_else(|| SkillsError::msg("GitHub API: missing default_branch"))?
             }
         };
-
-        Ok(Some(RepoRef {
+        Ok(RepoRef {
             owner: owner.to_string(),
             repo: repo.to_string(),
             r#ref,
-        }))
+        })
     }
 }
 
-/// Fetch the files of the `@skill`-selected skill dir into a fresh temp dir.
+/// Fetch the named skill's directory from GitHub into a fresh temp dir.
 ///
-/// - `Ok(Some((temp, root)))`: the skill was found; `root` holds it at its original
-///   relative path (e.g. `root/pdf/SKILL.md`).
-/// - `Ok(None)`: the GitHub API worked but no skill matched the name.
-/// - `Err`: API/network failure — reported to the user; callers must not widen the
-///   request to a whole-repo archive fetch.
-pub fn fetch_skill_via_api(
-    parsed: &Source,
+/// `Ok((temp, skill))` holds the matched skill; the caller keeps `temp` alive
+/// until the skill has been installed. `Ok` never carries "not found" — an
+/// unknown skill name is an error naming the skill and the repository.
+pub fn fetch_skill(
+    owner: &str,
+    repo: &str,
     skill_name: &str,
-    include_internal: bool,
-) -> Result<Option<(tempfile::TempDir, PathBuf)>> {
-    fetch_skill_via_api_with(parsed, skill_name, include_internal, &http_get)
-}
-
-/// Fetch only the files under `parsed.subpath` into a fresh temp dir, keeping
-/// their original relative paths so discovery can run on the root as usual.
-///
-/// This is what keeps a subpath install from downloading (and keeping) the whole
-/// repository, so it must never silently widen to the repository root.
-///
-/// - `Ok(Some((temp, root)))`: the subpath files were fetched.
-/// - `Ok(None)`: the GitHub API worked but nothing exists under the subpath.
-/// - `Err`: API/network failure — reported to the user; callers must not widen the
-///   request to a whole-repo archive fetch.
-pub fn fetch_subdir_via_api(parsed: &Source) -> Result<Option<(tempfile::TempDir, PathBuf)>> {
-    fetch_subdir_via_api_with(parsed, &http_get)
-}
-
-fn fetch_subdir_via_api_with(
-    parsed: &Source,
-    get: Get,
-) -> Result<Option<(tempfile::TempDir, PathBuf)>> {
-    let Some(subpath) = parsed.subpath.as_deref() else {
-        return Ok(None);
-    };
-    let Some(rr) = RepoRef::resolve(parsed, get)? else {
-        return Ok(None);
-    };
-    let files = list_files_under(&rr, Some(subpath), get)?;
-    if files.is_empty() {
-        return Ok(None);
+    reference: Option<&str>,
+) -> Result<(tempfile::TempDir, Skill)> {
+    let slug = format!("{owner}/{repo}");
+    match fetch_skill_with(owner, repo, skill_name, reference, &http_get) {
+        Ok(Some(v)) => Ok(v),
+        Ok(None) => Err(SkillsError::msg(not_found_message(skill_name, &slug))),
+        Err(e) => Err(decorate_api_error(e, &slug)),
     }
-    download_files(&rr, &files, get).map(Some)
 }
 
-fn fetch_skill_via_api_with(
-    parsed: &Source,
-    skill_name: &str,
-    include_internal: bool,
-    get: Get,
-) -> Result<Option<(tempfile::TempDir, PathBuf)>> {
-    let Some(rr) = RepoRef::resolve(parsed, get)? else {
-        return Ok(None);
+/// The error for a skill name the repository does not contain.
+fn not_found_message(skill_name: &str, slug: &str) -> String {
+    format!(
+        "No skill directory named \"{skill_name}\" found in {slug}. \
+         The name after @ matches a directory containing SKILL.md \
+         (case-insensitive); a SKILL.md at the repository root is selected \
+         with the repository name."
+    )
+}
+
+/// Prefix transport/API errors with the repository they came from and append the
+/// rate-limit hint when the failure looks like one.
+fn decorate_api_error(e: SkillsError, slug: &str) -> SkillsError {
+    let hint = match &e {
+        SkillsError::Http(he) if matches!(he.as_ref(), ureq::Error::StatusCode(403 | 429)) => {
+            " Set GITHUB_TOKEN to raise the API rate limit from 60 to 5000 requests/hour."
+        }
+        _ => "",
     };
-    let files = list_files_under(&rr, parsed.subpath.as_deref(), get)?;
+    SkillsError::msg(format!("GitHub API request failed for {slug}: {e}.{hint}"))
+}
 
-    // Candidate skill dirs (parents of any `SKILL.md`), shallowest first so a
-    // name match shadows deeper ones (mirrors discover's priority).
-    let mut candidates: Vec<(usize, String)> = files
-        .iter()
-        .filter_map(|f| {
-            let dir = match f.path.as_str() {
-                "SKILL.md" => "",
-                p => p.strip_suffix("/SKILL.md")?,
+/// The skill directory a file belongs to when the file is a `SKILL.md`:
+/// `""` for a root-level manifest, otherwise the path without its tail.
+fn skill_dir_of(path: &str) -> Option<&str> {
+    match path {
+        "SKILL.md" => Some(""),
+        p => p.strip_suffix("/SKILL.md"),
+    }
+}
+
+/// The last path segment of a repository-relative dir.
+fn dir_basename(dir: &str) -> &str {
+    dir.rsplit('/').next().unwrap_or(dir)
+}
+
+/// Injectable core of [`fetch_skill`]: `Ok(None)` means the API worked but no
+/// skill directory matched the name.
+fn fetch_skill_with(
+    owner: &str,
+    repo: &str,
+    skill_name: &str,
+    reference: Option<&str>,
+    get: Get,
+) -> Result<Option<(tempfile::TempDir, Skill)>> {
+    let rr = RepoRef::resolve(owner, repo, reference, get)?;
+    let files = list_files(&rr, get)?;
+
+    // Locate the skill directory directly from the listing — no downloads:
+    // a directory containing SKILL.md whose name matches (case-insensitive).
+    // A root-level manifest has no directory name, so it takes the repo name.
+    // Shallowest match wins, ties broken by path for determinism.
+    let mut matched: Option<(usize, String)> = None;
+    for f in &files {
+        let Some(dir) = skill_dir_of(&f.path) else {
+            continue;
+        };
+        let depth = if dir.is_empty() {
+            0
+        } else {
+            dir.matches('/').count() + 1
+        };
+        let name = if dir.is_empty() {
+            rr.repo.as_str()
+        } else {
+            dir_basename(dir)
+        };
+        if name.eq_ignore_ascii_case(skill_name) {
+            let better = match &matched {
+                None => true,
+                Some((d, p)) => (depth, dir) < (*d, p.as_str()),
             };
-            let depth = if dir.is_empty() {
-                0
-            } else {
-                dir.matches('/').count() + 1
-            };
-            Some((depth, dir.to_string()))
-        })
-        .collect();
-    candidates.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
-    candidates.dedup_by(|a, b| a.1 == b.1);
-
-    // Fetch every candidate manifest in one batch, then take the first match in
-    // depth order.
-    let manifests: Vec<RemoteFile> = candidates
-        .iter()
-        .map(|(_, dir)| RemoteFile {
-            path: if dir.is_empty() {
-                "SKILL.md".to_string()
-            } else {
-                format!("{dir}/SKILL.md")
-            },
-            mode: None,
-        })
-        .collect();
-    let (_scratch, scratch_root) = download_files(&rr, &manifests, get)?;
-
-    let mut matched: Option<String> = None;
-    for (i, (_, dir)) in candidates.iter().enumerate() {
-        let md = scratch_root.join(&manifests[i].path);
-        if let Some(skill) = parse_skill_md_inner(&md, include_internal)
-            && !filter_skills(std::slice::from_ref(&skill), &[skill_name.to_string()]).is_empty()
-        {
-            matched = Some(dir.clone());
-            break;
+            if better {
+                matched = Some((depth, dir.to_string()));
+            }
         }
     }
 
-    let Some(dir) = matched else {
+    let Some((_, dir)) = matched else {
         return Ok(None);
     };
     let prefix = if dir.is_empty() {
@@ -198,33 +183,47 @@ fn fetch_skill_via_api_with(
         .into_iter()
         .filter(|f| prefix.as_deref().is_none_or(|p| f.path.starts_with(p)))
         .collect();
-    if selected.is_empty() {
-        return Ok(None);
-    }
-    download_files(&rr, &selected, get).map(Some)
+    let (temp, root) = download_files(&rr, &selected, get)?;
+
+    // Build the skill from the downloaded directory. Its name is the directory
+    // name; the manifest contributes only the description. Explicit selection
+    // also makes internal skills visible. The root case has no directory name,
+    // so the skill is named after the repository.
+    let skill = if dir.is_empty() {
+        Skill {
+            name: rr.repo.clone(),
+            description: read_description(&root.join("SKILL.md")),
+            dir: root,
+        }
+    } else {
+        match read_skill(&root.join(&dir), true) {
+            Some(s) => s,
+            None => return Ok(None),
+        }
+    };
+    Ok(Some((temp, skill)))
 }
 
-/// Every file under `prefix` (the whole repo when `None`), sorted by path.
+/// Every file in the repository, sorted by path.
 ///
 /// One recursive `git/trees` call; if GitHub truncated the response we fall back
 /// to per-directory `contents` listing, which costs one request per directory but
 /// always returns a complete listing.
-fn list_files_under(rr: &RepoRef, prefix: Option<&str>, get: Get) -> Result<Vec<RemoteFile>> {
+fn list_files(rr: &RepoRef, get: Get) -> Result<Vec<RemoteFile>> {
     let body = get(&tree_url(&rr.owner, &rr.repo, &rr.r#ref)?)?;
     let v: Value = serde_json::from_slice(&body)?;
 
     let mut files = if v.get("truncated").and_then(Value::as_bool) == Some(true) {
-        list_via_contents(rr, prefix, get)?
+        list_via_contents(rr, get)?
     } else {
-        files_from_tree(&v, prefix)
+        files_from_tree(&v)
     };
     files.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(files)
 }
 
-/// Files of `prefix` taken from a `git/trees` response.
-fn files_from_tree(tree: &Value, prefix: Option<&str>) -> Vec<RemoteFile> {
-    let pref = prefix.map(|p| format!("{p}/"));
+/// Files taken from a `git/trees` response (blobs only).
+fn files_from_tree(tree: &Value) -> Vec<RemoteFile> {
     tree.get("tree")
         .and_then(Value::as_array)
         .map(|entries| {
@@ -233,11 +232,6 @@ fn files_from_tree(tree: &Value, prefix: Option<&str>) -> Vec<RemoteFile> {
                 .filter_map(|e| {
                     let path = e.get("path")?.as_str()?;
                     if e.get("type")?.as_str()? != "blob" {
-                        return None;
-                    }
-                    if let Some(pref) = &pref
-                        && !path.starts_with(pref.as_str())
-                    {
                         return None;
                     }
                     Some(RemoteFile {
@@ -252,9 +246,9 @@ fn files_from_tree(tree: &Value, prefix: Option<&str>) -> Vec<RemoteFile> {
 
 /// Complete listing through the `contents` API: one request per directory, which
 /// sidesteps the `git/trees` truncation limit entirely.
-fn list_via_contents(rr: &RepoRef, prefix: Option<&str>, get: Get) -> Result<Vec<RemoteFile>> {
+fn list_via_contents(rr: &RepoRef, get: Get) -> Result<Vec<RemoteFile>> {
     let mut files: Vec<RemoteFile> = Vec::new();
-    let mut pending: Vec<String> = vec![prefix.unwrap_or("").to_string()];
+    let mut pending: Vec<String> = vec![String::new()];
 
     while let Some(dir) = pending.pop() {
         let body = get(&contents_url(&rr.owner, &rr.repo, &dir, &rr.r#ref)?)?;
@@ -275,8 +269,8 @@ fn list_via_contents(rr: &RepoRef, prefix: Option<&str>, get: Get) -> Result<Vec
                 // `symlink` / `submodule` entries have no downloadable content.
                 Some("file") => files.push(RemoteFile {
                     path: path.to_string(),
-                    // The contents API reports no mode: the executable bit can only
-                    // be restored from a tree listing.
+                    // The contents API reports no mode: the executable bit can
+                    // only be restored from a tree listing.
                     mode: None,
                 }),
                 _ => {}
@@ -385,15 +379,48 @@ fn set_git_mode(path: &Path, mode: Option<&str>) {
 #[cfg(not(unix))]
 fn set_git_mode(_path: &Path, _mode: Option<&str>) {}
 
+// ============================================================================
+// HTTP transport (proxy-aware, token-aware, retried).
+// ============================================================================
+
+/// Shared HTTP agent: honors `HTTP(S)_PROXY` / `ALL_PROXY` / `NO_PROXY` env vars
+/// (ureq reads them via `Proxy::try_from_env`) so proxied networks can reach GitHub.
+fn agent() -> &'static ureq::Agent {
+    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+    AGENT.get_or_init(|| {
+        let mut builder = ureq::Agent::config_builder();
+        if let Some(proxy) = ureq::Proxy::try_from_env() {
+            builder = builder.proxy(Some(proxy));
+        }
+        ureq::Agent::new_with_config(builder.build())
+    })
+}
+
+/// Run `f` up to `attempts` times with exponential backoff between failures
+/// (150ms, 300ms, ...). Used around network calls to survive transient drops.
+fn with_retry<T>(attempts: usize, mut f: impl FnMut() -> Result<T>) -> Result<T> {
+    let mut last: Option<SkillsError> = None;
+    for i in 0..attempts {
+        match f() {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                last = Some(e);
+                if i + 1 < attempts {
+                    std::thread::sleep(std::time::Duration::from_millis(150 * (1 << i)));
+                }
+            }
+        }
+    }
+    Err(last.unwrap_or_else(|| SkillsError::msg("retry exhausted")))
+}
+
 /// Real HTTP GET used by default (injectable for tests).
 ///
 /// Uses the shared proxy-aware agent, honors `GITHUB_TOKEN` to raise the API rate
 /// limit and to reach private repositories, and retries transient failures.
 fn http_get(url: &str) -> Result<Vec<u8>> {
     let attempt = || -> Result<Vec<u8>> {
-        let mut req = crate::core::fetch::agent()
-            .get(url)
-            .header("User-Agent", "agents-skills");
+        let mut req = agent().get(url).header("User-Agent", "agents-skills");
         if let Some(token) = github_token()
             && is_github_host(url)
         {
@@ -405,7 +432,7 @@ fn http_get(url: &str) -> Result<Vec<u8>> {
         reader.read_to_end(&mut buf)?;
         Ok(buf)
     };
-    crate::core::fetch::with_retry(3, attempt)
+    with_retry(3, attempt)
 }
 
 /// `GITHUB_TOKEN` when set and non-empty.
@@ -493,7 +520,6 @@ fn media_url(owner: &str, repo: &str, r#ref: &str, path: &str) -> Result<String>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::source::parse_source;
 
     /// Tree-API response body for `(path, type, mode)` entries.
     fn tree_json(tree: &[(&str, &str, &str)], truncated: bool) -> Value {
@@ -514,7 +540,7 @@ mod tests {
         };
         let mut dirs: Vec<String> = Vec::new();
         let mut out: Vec<Value> = Vec::new();
-        for (path, ty, _) in tree {
+        for (path, ty, _m) in tree {
             let Some(rel) = path.strip_prefix(&prefix) else {
                 continue;
             };
@@ -562,13 +588,14 @@ mod tests {
                 return Ok(serde_json::to_vec(&contents_json(tree, &contents_dir(url))).unwrap());
             }
             if url.contains("/repos/acme/skills") {
-                return Ok(serde_json::to_vec(&serde_json::json!({
-                    "default_branch": "main"
-                }))
-                .unwrap());
+                return Ok(
+                    serde_json::to_vec(&serde_json::json!({"default_branch": "main"})).unwrap(),
+                );
             }
             for (p, content) in files {
-                if url.ends_with(&format!("/{p}")) {
+                // raw URLs percent-encode path segments (e.g. spaces).
+                let suffix = format!("/{}", p.replace(' ', "%20"));
+                if url.ends_with(&suffix) {
                     return Ok(content.as_bytes().to_vec());
                 }
             }
@@ -592,116 +619,160 @@ mod tests {
     ];
 
     #[test]
-    fn fetch_via_api_finds_skill_dir_only() {
-        let parsed = parse_source("acme/skills@pdf").unwrap();
+    fn fetch_finds_the_named_skill_dir_only() {
         let get = fake_get(TREE, FILES, false);
-        let (tmp, root) = fetch_skill_via_api_with(&parsed, "pdf", true, &get)
+        let (tmp, skill) = fetch_skill_with("acme", "skills", "pdf", None, &get)
             .unwrap()
             .expect("pdf should match");
 
+        assert_eq!(skill.name, "pdf");
+        let root = tmp.path();
         assert!(root.join("pdf/SKILL.md").is_file());
         assert!(root.join("pdf/scripts/run.sh").is_file());
         // Only the matched skill dir is fetched.
         assert!(!root.join("skills/doc/SKILL.md").exists());
         assert!(!root.join("README.md").exists());
-        let _ = tmp;
     }
 
     #[test]
-    fn fetch_via_api_no_match_returns_none() {
-        let parsed = parse_source("acme/skills@zzz").unwrap();
-        let get = fake_get(TREE, FILES, false);
+    fn fetch_matches_on_directory_name_ignoring_frontmatter_name() {
+        // The skill name is the directory name; the frontmatter `name` is
+        // ignored. Matching is case-insensitive.
+        let tree = [("skills/PDF Master/SKILL.md", "blob", "100644")];
+        let files = [(
+            "skills/PDF Master/SKILL.md",
+            "---\nname: pdf-skill\ndescription: d\n---\nbody",
+        )];
+        let get = fake_get(&tree, &files, false);
+        let (_tmp, skill) = fetch_skill_with("acme", "skills", "pdf master", None, &get)
+            .unwrap()
+            .expect("directory name should match");
+        assert_eq!(skill.name, "PDF Master");
+        assert_eq!(skill.description, "d");
+    }
+
+    #[test]
+    fn fetch_does_not_match_on_frontmatter_name() {
+        // The directory is `acrobat`; a frontmatter `name: pdf` must not make
+        // `@pdf` match anymore.
+        let tree = [("skills/acrobat/SKILL.md", "blob", "100644")];
+        let files = [(
+            "skills/acrobat/SKILL.md",
+            "---\nname: pdf\ndescription: d\n---\nbody",
+        )];
+        let get = fake_get(&tree, &files, false);
         assert!(
-            fetch_skill_via_api_with(&parsed, "zzz", true, &get)
+            fetch_skill_with("acme", "skills", "pdf", None, &get)
                 .unwrap()
                 .is_none()
         );
+        // The directory name still selects it.
+        let (_tmp, skill) = fetch_skill_with("acme", "skills", "acrobat", None, &get)
+            .unwrap()
+            .expect("directory name should match");
+        assert_eq!(skill.name, "acrobat");
     }
 
     #[test]
-    fn fetch_via_api_api_error_propagates() {
-        let parsed = parse_source("acme/skills@pdf").unwrap();
-        let get = |url: &str| -> Result<Vec<u8>> {
-            Err(SkillsError::msg(format!("network down: {url}")))
-        };
-        assert!(fetch_skill_via_api_with(&parsed, "pdf", true, &get).is_err());
-    }
-
-    #[test]
-    fn fetch_via_api_ignores_non_github() {
-        let parsed = parse_source("https://gitlab.com/acme/skills/-/tree/main").unwrap();
-        let get = |_: &str| -> Result<Vec<u8>> { unreachable!("no HTTP for non-github") };
-        assert!(
-            fetch_skill_via_api_with(&parsed, "pdf", true, &get)
-                .unwrap()
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn fetch_subdir_downloads_only_that_dir() {
-        let parsed = parse_source("acme/skills/skills/pdf").unwrap();
+    fn fetch_root_skill_md_is_selected_by_repo_name() {
+        // A SKILL.md at the repository root is a skill named after the repo;
+        // selecting it downloads the whole repository.
         let tree = [
-            ("skills/pdf/SKILL.md", "blob", "100644"),
-            ("skills/pdf/scripts/run.sh", "blob", "100755"),
-            ("skills/doc/SKILL.md", "blob", "100644"),
+            ("SKILL.md", "blob", "100644"),
             ("README.md", "blob", "100644"),
         ];
         let files = [
             (
-                "skills/pdf/SKILL.md",
-                "---\nname: pdf\ndescription: d\n---\nbody",
+                "SKILL.md",
+                "---\nname: whatever\ndescription: root skill\n---\nbody",
             ),
-            ("skills/pdf/scripts/run.sh", "#!/bin/sh\n"),
-            (
-                "skills/doc/SKILL.md",
-                "---\nname: doc\ndescription: d\n---\nbody",
-            ),
-            ("README.md", "# read me"),
+            ("README.md", "# repo"),
         ];
         let get = fake_get(&tree, &files, false);
-        let (tmp, root) = fetch_subdir_via_api_with(&parsed, &get)
+        let (tmp, skill) = fetch_skill_with("acme", "skills", "skills", None, &get)
             .unwrap()
-            .expect("files under skills/pdf should match");
+            .expect("root manifest is selected with the repo name");
+        assert_eq!(skill.name, "skills");
+        assert_eq!(skill.description, "root skill");
+        assert!(tmp.path().join("SKILL.md").is_file());
+        assert!(tmp.path().join("README.md").is_file());
+    }
 
-        assert!(root.join("skills/pdf/SKILL.md").is_file());
-        assert!(root.join("skills/pdf/scripts/run.sh").is_file());
-        // Files outside the subpath are not fetched.
-        assert!(!root.join("skills/doc/SKILL.md").exists());
-        assert!(!root.join("README.md").exists());
-        let _ = tmp;
+    #[test]
+    fn fetch_shallowest_directory_wins() {
+        // Two dirs with the same basename: the shallower one is selected.
+        let tree = [
+            ("pdf/SKILL.md", "blob", "100644"),
+            ("vendor/pdf/SKILL.md", "blob", "100644"),
+        ];
+        let files = [
+            (
+                "pdf/SKILL.md",
+                "---\nname: pdf\ndescription: shallow\n---\nbody",
+            ),
+            (
+                "vendor/pdf/SKILL.md",
+                "---\nname: pdf\ndescription: deep\n---\nbody",
+            ),
+        ];
+        let get = fake_get(&tree, &files, false);
+        let (tmp, skill) = fetch_skill_with("acme", "skills", "pdf", None, &get)
+            .unwrap()
+            .expect("pdf should match");
+        assert_eq!(skill.description, "shallow");
+        assert!(tmp.path().join("pdf/SKILL.md").is_file());
+        assert!(!tmp.path().join("vendor/pdf/SKILL.md").exists());
+    }
+
+    #[test]
+    fn fetch_no_match_returns_none() {
+        let get = fake_get(TREE, FILES, false);
+        assert!(
+            fetch_skill_with("acme", "skills", "zzz", None, &get)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn fetch_public_api_error_propagates() {
+        let get = |url: &str| -> Result<Vec<u8>> {
+            Err(SkillsError::msg(format!("network down: {url}")))
+        };
+        assert!(fetch_skill_with("acme", "skills", "pdf", None, &get).is_err());
+    }
+
+    #[test]
+    fn fetch_public_not_found_is_a_clean_message() {
+        let msg = not_found_message("zzz", "acme/skills");
+        assert!(msg.contains("No skill directory named \"zzz\""), "{msg}");
+        assert!(msg.contains("acme/skills"), "{msg}");
+        assert!(!msg.contains("request failed"), "{msg}");
     }
 
     #[test]
     fn truncated_tree_falls_back_to_contents_listing() {
-        // The tree API answers, but truncated: the listing must come from the
-        // contents API instead of failing (or downloading the whole repo).
-        let parsed = parse_source("acme/skills/skills/pdf").unwrap();
+        // The tree API answers, but truncated: the listing comes from the
+        // contents API instead of failing.
         let tree = [
-            ("skills/pdf/SKILL.md", "blob", "100644"),
-            ("skills/pdf/assets/logo.svg", "blob", "100644"),
-            ("skills/doc/SKILL.md", "blob", "100644"),
+            ("pdf/SKILL.md", "blob", "100644"),
+            ("pdf/assets/logo.svg", "blob", "100644"),
+            ("doc/SKILL.md", "blob", "100644"),
         ];
         let files = [
-            (
-                "skills/pdf/SKILL.md",
-                "---\nname: pdf\ndescription: d\n---\nbody",
-            ),
-            ("skills/pdf/assets/logo.svg", "<svg/>"),
-            (
-                "skills/doc/SKILL.md",
-                "---\nname: doc\ndescription: d\n---\nbody",
-            ),
+            ("pdf/SKILL.md", "---\nname: pdf\ndescription: d\n---\nbody"),
+            ("pdf/assets/logo.svg", "<svg/>"),
+            ("doc/SKILL.md", "---\nname: doc\ndescription: d\n---\nbody"),
         ];
         let get = fake_get(&tree, &files, true);
-        let (tmp, root) = fetch_subdir_via_api_with(&parsed, &get)
+        let (tmp, skill) = fetch_skill_with("acme", "skills", "pdf", None, &get)
             .unwrap()
             .expect("truncated tree should fall back to the contents API");
-
-        assert!(root.join("skills/pdf/SKILL.md").is_file());
-        assert!(root.join("skills/pdf/assets/logo.svg").is_file());
-        assert!(!root.join("skills/doc/SKILL.md").exists());
-        let _ = tmp;
+        assert_eq!(skill.name, "pdf");
+        let root = tmp.path();
+        assert!(root.join("pdf/SKILL.md").is_file());
+        assert!(root.join("pdf/assets/logo.svg").is_file());
+        assert!(!root.join("doc/SKILL.md").exists());
     }
 
     #[test]
@@ -720,7 +791,7 @@ mod tests {
             ]))
             .unwrap())
         };
-        let files = list_via_contents(&rr, Some("pdf"), &get).unwrap();
+        let files = list_via_contents(&rr, &get).unwrap();
         assert_eq!(
             files,
             vec![RemoteFile {
@@ -732,39 +803,43 @@ mod tests {
 
     #[test]
     fn lfs_pointer_is_refetched_from_media() {
-        let parsed = parse_source("acme/skills/skills/pdf").unwrap();
-        let tree = [("skills/pdf/data.bin", "blob", "100644")];
         let pointer = format!(
             "version https://git-lfs.github.com/spec/v1\noid sha256:{}\nsize 42\n",
             "0".repeat(64)
         );
+        // The manifest must exist for `pdf` to be a candidate.
+        let tree = [
+            ("pdf/SKILL.md", "blob", "100644"),
+            ("pdf/data.bin", "blob", "100644"),
+        ];
         let get = move |url: &str| -> Result<Vec<u8>> {
             if url.contains("/git/trees/") {
                 return Ok(serde_json::to_vec(&tree_json(&tree, false)).unwrap());
             }
             if url == "https://api.github.com/repos/acme/skills" {
-                return Ok(serde_json::to_vec(&serde_json::json!({
-                    "default_branch": "main"
-                }))
-                .unwrap());
+                return Ok(
+                    serde_json::to_vec(&serde_json::json!({"default_branch": "main"})).unwrap(),
+                );
             }
             if url.contains("media.githubusercontent.com") {
                 return Ok(b"real-bytes".to_vec());
             }
-            if url.ends_with("/skills/pdf/data.bin") {
+            if url.ends_with("/pdf/SKILL.md") {
+                return Ok(b"---\nname: pdf\ndescription: d\n---\nbody".to_vec());
+            }
+            if url.ends_with("/pdf/data.bin") {
                 return Ok(pointer.as_bytes().to_vec());
             }
             Err(SkillsError::msg(format!("unexpected url: {url}")))
         };
 
-        let (tmp, root) = fetch_subdir_via_api_with(&parsed, &get)
+        let (tmp, _skill) = fetch_skill_with("acme", "skills", "pdf", None, &get)
             .unwrap()
             .expect("the LFS file should be installed");
         assert_eq!(
-            std::fs::read_to_string(root.join("skills/pdf/data.bin")).unwrap(),
+            std::fs::read_to_string(tmp.path().join("pdf/data.bin")).unwrap(),
             "real-bytes"
         );
-        let _ = tmp;
     }
 
     #[cfg(unix)]
@@ -772,7 +847,6 @@ mod tests {
     fn executable_bit_comes_from_the_tree_mode() {
         use std::os::unix::fs::PermissionsExt;
 
-        let parsed = parse_source("acme/skills/pdf").unwrap();
         let tree = [
             ("pdf/SKILL.md", "blob", "100644"),
             ("pdf/scripts/run.sh", "blob", "100755"),
@@ -782,12 +856,12 @@ mod tests {
             ("pdf/scripts/run.sh", "#!/bin/sh\n"),
         ];
         let get = fake_get(&tree, &files, false);
-        let (tmp, root) = fetch_subdir_via_api_with(&parsed, &get)
+        let (tmp, _skill) = fetch_skill_with("acme", "skills", "pdf", None, &get)
             .unwrap()
             .expect("pdf should match");
 
         let mode = |p: &str| {
-            std::fs::metadata(root.join(p))
+            std::fs::metadata(tmp.path().join(p))
                 .unwrap()
                 .permissions()
                 .mode()
@@ -795,7 +869,6 @@ mod tests {
         };
         assert_ne!(mode("pdf/scripts/run.sh"), 0, "script should be executable");
         assert_eq!(mode("pdf/SKILL.md"), 0, "manifest should not be executable");
-        let _ = tmp;
     }
 
     #[test]
@@ -833,25 +906,6 @@ mod tests {
         assert!(relative_path("pdf/SKILL.md").is_ok());
         assert!(relative_path("../evil").is_err());
         assert!(relative_path("/etc/passwd").is_err());
-    }
-
-    #[test]
-    fn fetch_subdir_without_files_returns_none() {
-        let parsed = parse_source("acme/skills/skills/missing").unwrap();
-        let tree = [("skills/pdf/SKILL.md", "blob", "100644")];
-        let files = [(
-            "skills/pdf/SKILL.md",
-            "---\nname: pdf\ndescription: d\n---\nbody",
-        )];
-        let get = fake_get(&tree, &files, false);
-        assert!(fetch_subdir_via_api_with(&parsed, &get).unwrap().is_none());
-    }
-
-    #[test]
-    fn fetch_subdir_ignores_non_github() {
-        let parsed = parse_source("https://gitlab.com/acme/skills/-/tree/main/skills/pdf").unwrap();
-        let get = |_: &str| -> Result<Vec<u8>> { unreachable!("no HTTP for non-github") };
-        assert!(fetch_subdir_via_api_with(&parsed, &get).unwrap().is_none());
     }
 
     #[test]
@@ -898,8 +952,52 @@ mod tests {
             "https://media.githubusercontent.com/media/o/r/main/x"
         ));
         assert!(!is_github_host("https://evil.example/api.github.com/"));
-        assert!(!is_github_host(
-            "https://codeload.github.com/o/r/tar.gz/main"
-        ));
+    }
+
+    #[test]
+    fn rate_limit_hint_decorates_403_and_429() {
+        let limited = SkillsError::Http(Box::new(ureq::Error::StatusCode(403)));
+        assert!(
+            decorate_api_error(limited, "o/r")
+                .to_string()
+                .contains("GITHUB_TOKEN")
+        );
+        let limited = SkillsError::Http(Box::new(ureq::Error::StatusCode(429)));
+        assert!(
+            decorate_api_error(limited, "o/r")
+                .to_string()
+                .contains("GITHUB_TOKEN")
+        );
+        // A 5xx or a plain message is prefixed but gets no rate-limit advice.
+        let unavailable = SkillsError::Http(Box::new(ureq::Error::StatusCode(503)));
+        let msg = decorate_api_error(unavailable, "o/r").to_string();
+        assert!(msg.contains("request failed"));
+        assert!(!msg.contains("GITHUB_TOKEN"));
+    }
+
+    #[test]
+    fn with_retry_succeeds_after_failures() {
+        let mut calls = 0;
+        let r = with_retry(3, || -> Result<i32> {
+            calls += 1;
+            if calls < 3 {
+                Err(SkillsError::msg("boom"))
+            } else {
+                Ok(42)
+            }
+        });
+        assert_eq!(r.unwrap(), 42);
+        assert_eq!(calls, 3);
+    }
+
+    #[test]
+    fn with_retry_exhausts_after_attempts() {
+        let mut calls = 0;
+        let r = with_retry(2, || -> Result<i32> {
+            calls += 1;
+            Err(SkillsError::msg("boom"))
+        });
+        assert!(r.is_err());
+        assert_eq!(calls, 2);
     }
 }

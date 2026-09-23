@@ -1,28 +1,23 @@
-//! add: install skills (local path / GitHub / git / download).
+//! add: install one skill (local directory or `owner/repo@<skill>`).
 //!
 //! Renders the [`Manager::add`] outcome; no business logic lives here.
 
-use std::collections::HashSet;
-
-use crate::cli::{AddArgs, BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW};
+use crate::cli::{AddArgs, CYAN, DIM, GREEN, RESET, YELLOW};
 use crate::commands::{fail_agents, shorten_path};
 use agents_skills::error::Result;
-use agents_skills::{AddOutcome, AddRequest, Env, Manager, SkillsError, Source, SourceType};
+use agents_skills::{AddOutcome, AddRequest, Env, Manager, SkillsError, SourceType};
 
 pub fn run(manager: &Manager, args: AddArgs) -> Result<()> {
-    for source in &args.source {
-        let req = AddRequest {
-            source: source.clone(),
-            skills: args.skill.clone(),
-            list_only: args.list,
-        };
+    let req = AddRequest {
+        source: args.source,
+        reference: args.reference,
+    };
 
-        let outcome = match manager.add(&req) {
-            Ok(o) => o,
-            Err(e) => return fail_add(e),
-        };
-        render(manager.env(), &req, &outcome);
-    }
+    let outcome = match manager.add(&req) {
+        Ok(o) => o,
+        Err(e) => return fail_add(e),
+    };
+    render(manager.env(), &req, &outcome);
 
     println!();
     println!(
@@ -34,7 +29,7 @@ pub fn run(manager: &Manager, args: AddArgs) -> Result<()> {
 fn fail_add(e: SkillsError) -> Result<()> {
     match e {
         SkillsError::Message(msg) => {
-            println!("{RED}{msg}{RESET}");
+            println!("\x1b[31m{msg}\x1b[0m");
             std::process::exit(1);
         }
         other => fail_agents(other),
@@ -42,115 +37,40 @@ fn fail_add(e: SkillsError) -> Result<()> {
 }
 
 fn render(env: &Env, req: &AddRequest, outcome: &AddOutcome) {
-    print_source(&outcome.source);
-    println!(
-        "Found {GREEN}{}{RESET} skill{}",
-        outcome.skills.len(),
-        if outcome.skills.len() > 1 { "s" } else { "" }
-    );
+    print_source(env, req, &outcome.source);
 
-    if outcome.list_only {
-        println!();
-        println!("{BOLD}Available Skills{RESET}");
-        for skill in &outcome.skills {
-            println!("  {CYAN}{}{RESET}", skill.name);
-            println!("    {DIM}{}{RESET}", skill.description);
-        }
-        println!();
-        println!("Use --skill <name> to install specific skills");
-        return;
-    }
+    println!("Skill: {CYAN}{}{RESET}", outcome.skill.name);
+    println!("{DIM}{}{RESET}", outcome.skill.description);
 
-    // Selection message.
-    let at_filter = outcome.source.skill_filter.clone();
-    if req.skills.iter().any(|s| s == "*") {
-        println!("Installing all {} skills", outcome.skills.len());
-    } else if !req.skills.is_empty() || at_filter.is_some() {
-        if outcome.selected.is_empty() {
-            let names = if !req.skills.is_empty() {
-                req.skills.join(", ")
-            } else {
-                at_filter.unwrap_or_default()
-            };
-            println!("{RED}No matching skills found for: {}{RESET}", names);
-            println!("Available skills:");
-            for s in &outcome.skills {
-                println!("  - {}", s.name);
-            }
-            std::process::exit(1);
-        }
-        println!(
-            "Selected {} skill{}: {}",
-            outcome.selected.len(),
-            if outcome.selected.len() != 1 { "s" } else { "" },
-            outcome
-                .selected
-                .iter()
-                .map(|s| CYAN.to_string() + &s.name + RESET)
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-    } else if outcome.skills.len() == 1 {
-        let first = &outcome.skills[0];
-        println!("Skill: {CYAN}{}{RESET}", first.name);
-        println!("{DIM}{}{RESET}", first.description);
-    } else {
-        println!("Installing all {} skills", outcome.skills.len());
-    }
-
-    // Results.
-    if !outcome.installed.is_empty() {
-        let count = outcome
-            .installed
-            .iter()
-            .map(|i| i.name.as_str())
-            .collect::<HashSet<_>>()
-            .len();
-        println!();
-        for s in &outcome.installed {
-            println!("{GREEN}✓{RESET} {}", shorten_path(&s.canonical_path, env));
-        }
-        println!();
-        println!(
-            "{GREEN}Installed {count} skill{}{RESET}",
-            if count != 1 { "s" } else { "" }
-        );
-    }
-    if !outcome.skipped.is_empty() {
-        println!();
-        for name in &outcome.skipped {
-            println!("{YELLOW}•{RESET} {name} {DIM}skipped (already installed){RESET}");
-        }
-        println!("{DIM}To replace an installed skill: remove it first, then add again.{RESET}");
-    }
-    if !outcome.failed.is_empty() {
-        println!();
-        println!("{RED}Failed to install {}{RESET}", outcome.failed.len());
-        for f in &outcome.failed {
-            println!("  {RED}✗{RESET} {}: {DIM}{}{RESET}", f.skill, f.error);
-        }
-    }
     println!();
+    if outcome.skipped {
+        println!(
+            "{YELLOW}•{RESET} {} {DIM}skipped (already installed){RESET}",
+            outcome.skill.name
+        );
+        println!("{DIM}To replace an installed skill: remove it first, then add again.{RESET}");
+    } else {
+        println!(
+            "{GREEN}✓{RESET} {}",
+            shorten_path(&outcome.canonical_path, env)
+        );
+        println!();
+        println!("{GREEN}Installed 1 skill{RESET}");
+    }
 }
 
-fn print_source(parsed: &Source) {
+fn print_source(env: &Env, req: &AddRequest, parsed: &agents_skills::Source) {
     let main = match parsed.ty {
         SourceType::Local => parsed
             .local_path
             .as_ref()
-            .map(|p| p.display().to_string())
+            .map(|p| shorten_path(p, env))
             .unwrap_or_default(),
-        _ => parsed.url.clone(),
+        SourceType::Github => format!("{}@{CYAN}{}{RESET}", parsed.slug(), parsed.skill),
     };
     let mut line = format!("Source: {main}");
-    if let Some(r) = &parsed.r#ref {
-        line.push_str(&format!(" @ {YELLOW}{r}{RESET}"));
-    }
-    if let Some(sp) = &parsed.subpath {
-        line.push_str(&format!(" ({sp})"));
-    }
-    if let Some(sf) = &parsed.skill_filter {
-        line.push_str(&format!(" {DIM}@{RESET}{CYAN}{sf}{RESET}"));
+    if let Some(r) = &req.reference {
+        line.push_str(&format!(" {DIM}@ {YELLOW}{r}{RESET}"));
     }
     println!("{line}");
 }

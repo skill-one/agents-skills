@@ -18,7 +18,7 @@ fn add_skill(p: &TestProject, rel_dir: &str, name: &str) {
 #[test]
 fn disable_moves_skill_out_of_canonical_dir() {
     let p = TestProject::new();
-    add_skill(&p, "my-skill", "pdf");
+    add_skill(&p, "pdf", "pdf");
 
     p.skills()
         .args(["disable", "pdf"])
@@ -33,7 +33,7 @@ fn disable_moves_skill_out_of_canonical_dir() {
 #[test]
 fn enable_moves_skill_back_into_canonical_dir() {
     let p = TestProject::new();
-    add_skill(&p, "my-skill", "pdf");
+    add_skill(&p, "pdf", "pdf");
     p.skills().args(["disable", "pdf"]).assert().success();
 
     p.skills()
@@ -49,7 +49,7 @@ fn enable_moves_skill_back_into_canonical_dir() {
 #[test]
 fn disable_is_idempotent() {
     let p = TestProject::new();
-    add_skill(&p, "my-skill", "pdf");
+    add_skill(&p, "pdf", "pdf");
     p.skills().args(["disable", "pdf"]).assert().success();
 
     p.skills()
@@ -62,7 +62,7 @@ fn disable_is_idempotent() {
 #[test]
 fn enable_is_idempotent() {
     let p = TestProject::new();
-    add_skill(&p, "my-skill", "pdf");
+    add_skill(&p, "pdf", "pdf");
 
     p.skills()
         .args(["enable", "pdf"])
@@ -84,8 +84,8 @@ fn disable_missing_skill_reports_not_found() {
 #[test]
 fn disable_all_disables_every_enabled_skill() {
     let p = TestProject::new();
-    add_skill(&p, "s1", "alpha");
-    add_skill(&p, "s2", "beta");
+    add_skill(&p, "alpha", "alpha");
+    add_skill(&p, "beta", "beta");
 
     p.skills().args(["disable", "--all"]).assert().success();
 
@@ -98,8 +98,8 @@ fn disable_all_disables_every_enabled_skill() {
 #[test]
 fn enable_all_restores_every_disabled_skill() {
     let p = TestProject::new();
-    add_skill(&p, "s1", "alpha");
-    add_skill(&p, "s2", "beta");
+    add_skill(&p, "alpha", "alpha");
+    add_skill(&p, "beta", "beta");
     p.skills().args(["disable", "--all"]).assert().success();
 
     p.skills().args(["enable", "--all"]).assert().success();
@@ -113,7 +113,7 @@ fn enable_all_restores_every_disabled_skill() {
 #[test]
 fn list_shows_disabled_status_after_disable() {
     let p = TestProject::new();
-    add_skill(&p, "my-skill", "pdf");
+    add_skill(&p, "pdf", "pdf");
     p.skills().args(["disable", "pdf"]).assert().success();
 
     p.skills()
@@ -127,7 +127,7 @@ fn list_shows_disabled_status_after_disable() {
 #[test]
 fn list_json_reports_enabled_field() {
     let p = TestProject::new();
-    add_skill(&p, "my-skill", "pdf");
+    add_skill(&p, "pdf", "pdf");
 
     p.skills()
         .args(["list", "--json"])
@@ -159,7 +159,7 @@ fn third_party_reinstall(p: &TestProject, name: &str) {
 #[test]
 fn enable_overwrites_the_enabled_copy_of_a_disabled_skill() {
     let p = TestProject::new();
-    add_skill(&p, "my-skill", "pdf");
+    add_skill(&p, "pdf", "pdf");
     p.skills().args(["disable", "pdf"]).assert().success();
     third_party_reinstall(&p, "pdf");
 
@@ -181,7 +181,7 @@ fn enable_overwrites_the_enabled_copy_of_a_disabled_skill() {
 #[test]
 fn disable_overwrites_the_parked_copy_of_a_reinstalled_skill() {
     let p = TestProject::new();
-    add_skill(&p, "my-skill", "pdf");
+    add_skill(&p, "pdf", "pdf");
     p.skills().args(["disable", "pdf"]).assert().success();
     third_party_reinstall(&p, "pdf");
 

@@ -5,63 +5,52 @@ English | [简体中文](CLI.zh-CN.md)
 Complete command reference for the `agents-skills` CLI. For a feature overview
 see the [README](../README.md); library users see [LIBRARY.md](LIBRARY.md).
 
-## Install
-
-```bash
-cargo install agents-skills
-```
-
-Global option: `-v, --version` prints the version.
-
-## Command cheat sheet
-
-| Command   | Description                         |
-| --------- | ----------------------------------- |
-| `add`     | Install a skill pack from a source  |
-| `remove`  | Remove installed skills             |
-| `list`    | List installed skills               |
-| `disable` | Disable an installed skill          |
-| `enable`  | Re-enable a disabled skill          |
-| `agent`   | Link / unlink / show agent status   |
-
-Commands have no aliases (a minimal interface — full names only).
-
-General notes: skills live in exactly one place — the canonical directory
-`~/.agents/skills` — and every command operates on it. Disabled skills are
-parked in the sibling `~/.agents/disabled-skills`.
+Global option: `-v, --version`. Every command operates on the canonical
+directory `~/.agents/skills`; disabled skills are parked in
+`~/.agents/disabled-skills`. Commands have no aliases — full names only.
 
 ## add
 
-Install a skill pack from a local path, a Git repository, or an HTTPS endpoint.
+Install exactly one skill from a local directory or from GitHub.
 
 ```
-agents-skills add <source...> [options]
+agents-skills add <source> [--ref <ref>]
 ```
 
-| Option               | Description                                |
-| -------------------- | ------------------------------------------ |
-| `-s, --skill <s>...` | Skill names to install (`'*'` = all)       |
-| `-l, --list`         | Only list available skills, do not install |
+`<source>` is either a local skill directory (it must directly contain a
+`SKILL.md`) or `owner/repo@<skill>`, naming one skill on GitHub. A skill's
+name is always its directory name: the repository tree is searched for a
+directory containing `SKILL.md` whose basename matches `<skill>`
+case-insensitively (shallowest match wins). A `SKILL.md` at the repository
+root is selected with the repository name and installs the whole repository.
+The frontmatter `name` field is ignored everywhere.
+
+| Option        | Description                                            |
+| ------------- | ------------------------------------------------------ |
+| `--ref <ref>` | Pin a branch, tag, or commit SHA (GitHub sources only) |
 
 ```bash
-agents-skills add anthropics/skills               # install into ~/.agents/skills
-agents-skills add anthropics/skills@pdf           # install only the specified skill
-agents-skills add anthropics/skills -l            # only list available skills
+agents-skills add ./my-skill                        # install a local skill
+agents-skills add anthropics/skills@pdf             # install one skill from GitHub
+agents-skills add anthropics/skills@pdf --ref v1.2  # pin a branch, tag, or commit SHA
 ```
 
-`add` only ever adds and never overwrites: a skill whose name is already
-installed — enabled *or* disabled — is reported as `skipped` and left as is. To
-replace an installed skill, `remove` it first.
+Remote installs go through the GitHub API and download only the matched skill
+directory; set `GITHUB_TOKEN` to raise the rate limit. Any other source form
+(bare `owner/repo`, full URLs, subpaths, GitLab/SSH, HTTPS archives) is rejected
+with a message naming the supported syntax.
 
-After installing, run `agents-skills agent --link` to make the skills visible
-to agents (`add` does not link automatically).
+`add` never overwrites: a name already installed — enabled or disabled — is
+reported `skipped`; `remove` it first to replace it. Run `agent --link` after
+installing to make the skill visible to agents.
 
 ## remove
 
-Remove installed skills from the canonical directory.
+Remove skills from the canonical directory (and any parked copy under
+`disabled-skills`).
 
 ```
-agents-skills remove [skills...] [options]
+agents-skills remove [skills...] [--all]
 ```
 
 | Option               | Description                                 |
@@ -76,20 +65,10 @@ agents-skills remove --all    # remove all skills
 
 ## list
 
-List installed skills with each skill's description, path, status and install
-time. Use `agent --status` for each agent's link status.
+List installed skills with description, path, status and install time.
 
 ```
-agents-skills list [options]
-```
-
-| Option   | Description                    |
-| -------- | ------------------------------ |
-| `--json` | JSON output (machine-readable) |
-
-```bash
-agents-skills list
-agents-skills list --json
+agents-skills list [--json]
 ```
 
 Each skill is printed on two lines — name and description, then
@@ -102,35 +81,25 @@ docx Create and edit Word documents, including tables and headers.
   ~/.agents/skills/docx [enabled] · 2026-09-19 12:54
 ```
 
-`list --json` emits the same fields per skill:
+`--json` emits one object per skill:
 
-| Field         | Description                                                                    |
-| ------------- | ------------------------------------------------------------------------------ |
-| `name`        | Skill name — its on-disk directory name (what `remove`/`disable`/`enable` use) |
-| `description` | Skill description, collapsed onto a single line                                |
-| `enabled`     | `true` in the canonical directory, `false` parked in `disabled-skills`         |
-| `installedAt` | Skill directory creation time as Unix seconds (UTC), or `null` when unavailable |
+| Field         | Description                                                                                     |
+| ------------- | ----------------------------------------------------------------------------------------------- |
+| `name`        | Skill directory name — the identity every command uses; the frontmatter `name` field is ignored |
+| `description` | Skill description, collapsed onto a single line                                                 |
+| `enabled`     | `true` in the canonical directory, `false` parked in `disabled-skills`                          |
+| `installedAt` | Skill directory creation time as Unix seconds (UTC), or `null` when unavailable                 |
 
-`name` is the skill's on-disk directory name — the identity `remove`/`disable`/
-`enable` operate on; it may differ from the `SKILL.md` frontmatter name for a
-skill adopted from an agent directory. The directory itself is not serialized:
-the plain output shows it, and it is reconstructed from `name` plus `enabled`.
-
-`installedAt` approximates when the skill landed on disk: it is exact for `add`
-installs, but a skill adopted from an agent directory keeps that directory's
-original creation time, and re-installing over a skill refreshes it. It is
-`null` on filesystems that record no creation time (some Linux filesystems).
+Use `agent --status` for each agent's link status.
 
 ## disable / enable
 
 `disable` moves a skill's directory into `disabled-skills/`, hiding it from all
-agents; `enable` moves it back into the canonical directory and restores
-visibility (the inverse of `disable`). Files are preserved intact — lossless
-and reversible.
+agents; `enable` moves it back. Files are preserved — lossless and reversible.
 
 ```
-agents-skills disable [skills...] [options]
-agents-skills enable  [skills...] [options]
+agents-skills disable [skills...] [--all]
+agents-skills enable  [skills...] [--all]
 ```
 
 | Option               | Description                               |
@@ -138,12 +107,8 @@ agents-skills enable  [skills...] [options]
 | `-s, --skill <s>...` | Skill names to disable / enable           |
 | `--all`              | Disable all enabled / enable all disabled |
 
-```bash
-agents-skills disable pdf      # disable the specified skill
-agents-skills disable --all    # disable all enabled skills
-agents-skills enable  pdf      # enable the specified skill
-agents-skills enable  --all    # enable all disabled skills
-```
+Idempotent: repeating a command reports the skill as already in that state;
+unknown names are reported as missing, not errors.
 
 ## agent
 
@@ -151,43 +116,33 @@ Manage the link between each agent's skills directory and the canonical
 directory.
 
 ```
-agents-skills agent [agents...] (--link | --unlink | --status) [options]
+agents-skills agent [agents...] (--link | --unlink | --status)
 ```
 
 | Option     | Description                                                                                    |
 | ---------- | ---------------------------------------------------------------------------------------------- |
-| `--link`   | Link the agent's skills directory to the canonical directory (pre-existing content is adopted)  |
-| `--unlink` | Unlink the agent from the canonical directory (adopted content stays in the canonical dir)      |
-| `--status` | Show link status (read-only)                                                                    |
+| `--link`   | Link the agent's skills directory to the canonical directory (pre-existing content is adopted) |
+| `--unlink` | Unlink from the canonical directory (adopted content stays there)                              |
+| `--status` | Show link status (read-only)                                                                   |
 
-`--link`, `--unlink`, and `--status` are mutually exclusive; exactly one must
-be given. `--status` distinguishes two kinds of visibility: agents that read
-the canonical directory natively (Codex, Cursor, Warp, ...) are tagged
-`(canonical dir)`, while those wired in through a symlink are tagged
-`(linked)`. For **unlinked** agents, it categorizes the contents of their own
-skills directory: `private skills: ...` are skills (subdirectories and
-symlinks pointing to directories), `other files: ...` are other files — that
-is, what linking would adopt. Agents default to the auto-detected set; `'*'`
-means all.
+The three modes are mutually exclusive. Agents default to the auto-detected
+set; `'*'` means all. `--status` tags agents that read the canonical directory
+natively as `(canonical dir)` and symlinked ones as `(linked)`; for unlinked
+agents it categorizes their own directory contents — `private skills` vs
+`other files` — i.e. what linking would adopt.
 
-How linking handles pre-existing content (adoption is one-way):
+How `--link` handles pre-existing content (adoption is one-way):
 
-- Empty directory: replaced by the link directly.
-
-- Otherwise the contents are adopted before the link is created: skill
-  directories are moved into the canonical directory, non-skill entries are
-  moved into `.misc/<agent>/` inside it (a dot-dir, so they are never mistaken
-  for installed skills), and only then is the agent directory replaced by the
+- An empty directory is replaced by the link directly.
+- Otherwise contents are adopted first: skill directories move into the
+  canonical directory, other entries into its `.misc/<agent>/` (a dot-dir so
+  they are never mistaken for skills), then the agent directory becomes the
   link.
-
-- Name clashes are dropped in favour of the existing copy: the canonical copy
-  wins, and a name disabled in `disabled-skills` stays disabled instead of
-  being re-imported. Legacy per-skill symlinks pointing into the canonical
-  directory are dropped as well — their content already lives there.
-
-- Adopted content is *not* restored by `--unlink`; it is managed by
-  `remove`/`disable` from then on.
-
+- Name clashes keep the existing copy (the canonical one wins; a disabled name
+  stays disabled). Legacy per-skill symlinks into the canonical directory are
+  dropped — their content already lives there.
+- `--unlink` does not restore adopted content; manage it with
+  `remove`/`disable` afterwards.
 - Refused in only one case: the directory itself is a symlink pointing
   elsewhere.
 
@@ -197,12 +152,3 @@ agents-skills agent --link claude-code           # link (pre-existing content is
 agents-skills agent --status                     # show link status
 agents-skills agent --unlink claude-code         # unlink the specified agent
 ```
-
-## Related concepts
-
-- Source formats and install locations: see
-  [README · How it works](../README.md#how-it-works).
-
-- Library API (the `Manager` method and request/result types behind each
-  command): see [LIBRARY.md](LIBRARY.md).
-

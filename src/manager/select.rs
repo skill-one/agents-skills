@@ -99,15 +99,6 @@ pub(crate) fn set_enabled_state(
     Ok((selected, already, missing))
 }
 
-/// Combine `--skill` args with the source's `@skill` filter into one selection list.
-pub(crate) fn skill_filters(skills: &[String], skill_filter: Option<&str>) -> Vec<String> {
-    let mut filters = skills.to_vec();
-    if let Some(sf) = skill_filter {
-        filters.push(sf.to_string());
-    }
-    filters
-}
-
 /// Resolve skill names to remove: match by sanitized name.
 pub(crate) fn resolve_to_remove(
     requested: &[String],

@@ -275,7 +275,7 @@ fn agent_status_conflicts_with_unlink() {
 #[test]
 fn add_then_agent_link_ensures_agent_links() {
     let p = TestProject::new();
-    let src = p.write_skill_source("my-skill", "pdf");
+    let src = p.write_skill_source("pdf", "pdf");
 
     p.skills()
         .args(["add", src.to_str().unwrap()])
@@ -301,7 +301,7 @@ fn add_then_agent_link_ensures_agent_links() {
 #[test]
 fn remove_skill_disappears_from_linked_agents() {
     let p = TestProject::new();
-    let src = p.write_skill_source("my-skill", "pdf");
+    let src = p.write_skill_source("pdf", "pdf");
     p.skills()
         .args(["add", src.to_str().unwrap()])
         .assert()

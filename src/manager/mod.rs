@@ -3,125 +3,32 @@
 //! The manager is pure data: it returns structured outcomes and never prints or exits;
 //! the CLI layer (src/commands) is responsible for rendering.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::core::agents::{
     AGENTS, Env, canonical_skills_dir, config_home, disabled_skills_dir, home, is_installed,
     is_native,
 };
-use crate::core::discover::{Skill, discover_skills, filter_skills};
-use crate::core::fetch::fetch_source;
-use crate::core::github::{fetch_skill_via_api, fetch_subdir_via_api};
+use crate::core::discover::{Skill, read_skill};
+use crate::core::github::fetch_skill;
 use crate::core::install::{
     install_skill, list_disabled_skills, list_installed_skills, remove_skill, scan_disabled,
     scan_installed,
 };
 use crate::core::link::{is_agent_linked, link_agent, private_content, unlink_agent};
-use crate::core::source::{Source, SourceType, parse_source};
+use crate::core::source::{SourceType, parse_source};
 use crate::error::{Result, SkillsError};
 
-use crate::manager::select::{
-    resolve_target_agents, resolve_to_remove, set_enabled_state, skill_filters,
-};
+use crate::manager::select::{resolve_target_agents, resolve_to_remove, set_enabled_state};
 pub use crate::manager::types::{
     AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus,
-    DisableOutcome, DisableRequest, EnableOutcome, EnableRequest, InstallFailure, InstallSuccess,
-    ListedSkill, RemoveOutcome, RemoveRequest,
+    DisableOutcome, DisableRequest, EnableOutcome, EnableRequest, ListedSkill, RemoveOutcome,
+    RemoveRequest,
 };
 mod select;
 #[cfg(test)]
 mod tests;
 mod types;
-
-/// Require `subpath` to exist inside the fetched `root`.
-///
-/// The archive path is the one that needs this check: it serves sources the API
-/// cannot narrow (GitLab), so a subpath that resolves to nothing there is a user
-/// error worth naming.
-fn require_subpath(root: &Path, subpath: &str, source: &Source) -> Result<()> {
-    if root.join(subpath).exists() {
-        return Ok(());
-    }
-    Err(subpath_error(source, subpath))
-}
-
-/// The error for a `subpath` that resolved to nothing.
-fn subpath_error(source: &Source, subpath: &str) -> SkillsError {
-    SkillsError::msg(format!(
-        "Subpath \"{subpath}\" not found in {} — check the path and the ref.",
-        source_label(source)
-    ))
-}
-
-/// The error for a skill name the API could not find.
-fn missing_skill_error(parsed: &Source, req: &AddRequest, name: &str) -> SkillsError {
-    SkillsError::msg(format!(
-        "No skill named \"{name}\" in {}. Run `agents-skills add {} --list` to list the available skills.",
-        source_label(parsed),
-        req.source
-    ))
-}
-
-/// A repository URL without its `.git` suffix, for error messages.
-fn source_label(source: &Source) -> &str {
-    source.url.trim_end_matches(".git")
-}
-
-/// A hint appended when a failure looks like a GitHub rate limit.
-///
-/// The unauthenticated limit is 60 requests/hour per IP, which a handful of
-/// narrowed installs can exhaust; a token raises it to 5000.
-fn rate_limit_hint(error: &SkillsError) -> &'static str {
-    match error {
-        SkillsError::Http(e) if matches!(e.as_ref(), ureq::Error::StatusCode(403 | 429)) => {
-            " Set GITHUB_TOKEN to raise the API rate limit from 60 to 5000 requests/hour."
-        }
-        _ => "",
-    }
-}
-
-/// Whether this request must be served by the GitHub API.
-///
-/// Both accepted shapes narrow the install — a `subpath`, or `--skill` / `@skill` —
-/// so the API can fetch exactly that much. Everything else is served by the
-/// whole-repo archive, which the API cannot narrow: a repository-wide install,
-/// `--list` (it needs the whole tree to report every skill), and GitLab (no API
-/// path is implemented for it).
-fn uses_github_api(parsed: &Source, list_only: bool) -> bool {
-    parsed.ty == SourceType::Github
-        && ((parsed.skill_filter.is_some() && !list_only) || parsed.subpath.is_some())
-}
-
-/// Fetch a narrowed request through the GitHub API.
-///
-/// There is deliberately no fallback to the whole-repo archive. It would silently
-/// widen a subpath install to the entire repository — and in the two commonest
-/// failures, a mistyped subpath or skill name, it would download everything only to
-/// report the very same error.
-fn fetch_narrowed(
-    parsed: &Source,
-    req: &AddRequest,
-    include_internal: bool,
-) -> Result<(tempfile::TempDir, PathBuf)> {
-    let fetched = match (parsed.skill_filter.as_deref(), req.list_only) {
-        (Some(name), false) => fetch_skill_via_api(parsed, name, include_internal),
-        _ => fetch_subdir_via_api(parsed),
-    };
-
-    match fetched {
-        Ok(Some(v)) => Ok(v),
-        // The API answered: the request simply matched nothing in the repository.
-        Ok(None) => Err(match parsed.skill_filter.as_deref() {
-            Some(name) => missing_skill_error(parsed, req, name),
-            None => subpath_error(parsed, parsed.subpath.as_deref().unwrap_or_default()),
-        }),
-        Err(e) => Err(SkillsError::msg(format!(
-            "GitHub API request failed for {}: {e}.{}",
-            source_label(parsed),
-            rate_limit_hint(&e)
-        ))),
-    }
-}
 
 /// Skill manager: carries injectable context and runs add/list/remove/enable/disable.
 ///
@@ -144,7 +51,7 @@ fn fetch_narrowed(
 ///     .cwd("/tmp/project")
 ///     .build();
 ///
-/// let req = AddRequest::new("anthropics/skills");
+/// let req = AddRequest::new("anthropics/skills@pdf");
 /// let _ = (real, sandboxed, req);
 /// ```
 pub struct Manager {
@@ -186,36 +93,29 @@ impl Manager {
         &self.env
     }
 
-    /// Add (install) skills from a source.
+    /// Add (install) exactly one skill from a source.
     ///
-    /// Parses the source, discovers its skills, and installs each selected skill
-    /// into the canonical dir (the only place real files live). Returns a
-    /// structured [`AddOutcome`] with discovered, selected, installed, skipped
-    /// and failed skills.
+    /// `source` is either a local skill directory (it must directly contain a
+    /// `SKILL.md`) or `owner/repo@<skill>`, naming one skill on GitHub. The
+    /// skill name is always its **directory name**: for GitHub sources it
+    /// matches, case-insensitively, a repository directory that directly
+    /// contains `SKILL.md` (shallowest match wins); a `SKILL.md` at the
+    /// repository root is selected with the repository name. The frontmatter
+    /// `name` is ignored. Pin a branch, tag, or commit SHA with
+    /// [`AddRequest::reference`]; otherwise the repository's default branch is
+    /// used. Remote installs go through the GitHub API, which downloads only the
+    /// matched skill directory — set `GITHUB_TOKEN` to raise its rate limit
+    /// (60 → 5000 requests/hour).
     ///
-    /// `add` only ever adds: a selected skill whose name is already installed —
-    /// enabled *or* disabled — is reported in [`AddOutcome`] `skipped` and left
-    /// untouched, so local edits are never silently discarded. Replace an
-    /// installed skill with [`Manager::remove`] followed by `add`.
+    /// The skill is installed into the canonical dir (the only place real files
+    /// live). `add` only ever adds: when a skill of the same name is already
+    /// installed — enabled *or* disabled — [`AddOutcome::skipped`] is `true` and
+    /// the existing copy is left untouched, so local edits are never silently
+    /// discarded. Replace an installed skill with [`Manager::remove`] followed by
+    /// `add`.
     ///
     /// `add` never links any agent: use [`Manager::agent`] to expose the canonical
     /// dir to an agent afterwards.
-    ///
-    /// # Fetching
-    ///
-    /// A request narrowed by a `subpath` or by a skill name (`--skill` / `@skill`)
-    /// is served by the GitHub API, which downloads only the matching files — and
-    /// which never falls back to a whole-repo archive, so a failure is reported
-    /// instead of silently widening the install. Set `GITHUB_TOKEN` to raise its
-    /// rate limit (60 → 5000 requests/hour). Everything else is served by the
-    /// whole-repo archive, the API being unable to narrow it: a repository-wide
-    /// install, `list_only` (it needs the whole tree to report every skill), and
-    /// GitLab.
-    ///
-    /// # Selection defaults
-    ///
-    /// - `skills` empty → all discovered skills; a `"*"` entry → all as well.
-    /// - `list_only` → discover and report, without installing anything.
     ///
     /// # Examples
     ///
@@ -241,122 +141,84 @@ impl Manager {
     ///     .build();
     ///
     /// let outcome = manager.add(&AddRequest::new(src.display().to_string()))?;
-    /// assert!(!outcome.installed.is_empty());
+    /// assert_eq!(outcome.skill.name, "hello");
     /// # Ok::<(), agents_skills::Error>(())
     /// ```
     ///
     /// # Errors
     ///
-    /// - [`SkillsError::Message`] when the source is invalid, unreadable, or contains
-    ///   no valid skill (a `SKILL.md` with `name` and `description`).
-    /// - [`SkillsError::Message`] when a narrowed GitHub fetch fails: an unknown
-    ///   `subpath` or skill name, or an API that is unavailable (see *Fetching*).
-    /// - [`SkillsError::Git`], [`SkillsError::Http`], [`SkillsError::Io`],
-    ///   [`SkillsError::Zip`], etc. for transport and filesystem failures.
+    /// - [`SkillsError::Message`] when the source syntax is invalid, the local
+    ///   directory is missing or has no direct `SKILL.md`, or the named skill
+    ///   does not exist in the GitHub repository.
+    /// - [`SkillsError::Http`] / [`SkillsError::Io`] for transport and filesystem
+    ///   failures.
     pub fn add(&self, req: &AddRequest) -> Result<AddOutcome> {
         let parsed = parse_source(&req.source)?;
-        // `@skill` in the source is an explicit selection, like `--skill`.
-        let include_internal = !req.skills.is_empty() || parsed.skill_filter.is_some();
 
-        // Fetch skills (the temp dir is held until install finishes).
-        let skills: Vec<Skill>;
+        // Resolve exactly one skill. The temp dir backing a remote fetch is held
+        // until the install below finishes (it drops and cleans up afterwards).
+        let skill: Skill;
         let _temp: Option<tempfile::TempDir>;
-        if parsed.ty == SourceType::Local {
-            let path = parsed
-                .local_path
-                .as_ref()
-                .ok_or_else(|| SkillsError::msg("local source missing path"))?;
-            if !path.exists() {
-                return Err(SkillsError::msg(format!(
-                    "Local path does not exist: {}",
-                    path.display()
-                )));
-            }
-            skills = discover_skills(path, parsed.subpath.as_deref(), include_internal)?;
-            _temp = None;
-        } else {
-            // Two fetch modes, both handing back a repository-root temp dir so that
-            // the subpath below means the same thing either way: the GitHub API for
-            // narrowed requests, the whole-repo archive for everything it cannot
-            // serve. See `uses_github_api` / `fetch_narrowed`.
-            let (tmp, root) = if uses_github_api(&parsed, req.list_only) {
-                fetch_narrowed(&parsed, req, include_internal)?
-            } else {
-                fetch_source(&parsed)?
-            };
-            if let Some(sp) = parsed.subpath.as_deref() {
-                require_subpath(&root, sp, &parsed)?;
-            }
-            skills = discover_skills(&root, parsed.subpath.as_deref(), include_internal)?;
-            _temp = Some(tmp);
-        }
-
-        if skills.is_empty() {
-            let msg = match parsed.subpath.as_deref() {
-                Some(sp) => format!(
-                    "No skills found under \"{sp}\". A skill needs a SKILL.md with name and description."
-                ),
-                None => {
-                    "No valid skills found. Skills require a SKILL.md with name and description."
-                        .to_string()
+        match parsed.ty {
+            SourceType::Local => {
+                if req.reference.is_some() {
+                    return Err(SkillsError::msg(
+                        "--ref can only pin a GitHub source (`owner/repo@<skill>`).",
+                    ));
                 }
-            };
-            return Err(SkillsError::msg(msg));
+                let path = parsed
+                    .local_path
+                    .as_ref()
+                    .ok_or_else(|| SkillsError::msg("local source missing path"))?;
+                if !path.exists() {
+                    return Err(SkillsError::msg(format!(
+                        "Local path does not exist: {}",
+                        path.display()
+                    )));
+                }
+                if !path.join("SKILL.md").is_file() {
+                    return Err(SkillsError::msg(format!(
+                        "Not a skill directory: \"{}\" must directly contain a SKILL.md file.",
+                        path.display()
+                    )));
+                }
+                // Identity is the directory name; the manifest only provides the
+                // description. A skill named by its explicit path may be internal.
+                let Some(s) = read_skill(path, true) else {
+                    return Err(SkillsError::msg(format!(
+                        "Not a skill directory: \"{}\" has no usable directory name.",
+                        path.display()
+                    )));
+                };
+                skill = s;
+                _temp = None;
+            }
+            SourceType::Github => {
+                let (tmp, s) = fetch_skill(
+                    &parsed.owner,
+                    &parsed.repo,
+                    &parsed.skill,
+                    req.reference.as_deref(),
+                )?;
+                skill = s;
+                _temp = Some(tmp);
+            }
         }
-
-        // --list: report discovered skills without installing.
-        if req.list_only {
-            return Ok(AddOutcome {
-                source: parsed,
-                skills,
-                selected: Vec::new(),
-                installed: Vec::new(),
-                skipped: Vec::new(),
-                failed: Vec::new(),
-                list_only: true,
-            });
-        }
-
-        // Select skills. `--skill` args and the source's `@skill` filter both count.
-        let filters = skill_filters(&req.skills, parsed.skill_filter.as_deref());
-        let selected: Vec<Skill> = if filters.iter().any(|s| s == "*") {
-            skills.clone()
-        } else if !filters.is_empty() {
-            filter_skills(&skills, &filters)
-        } else {
-            skills.clone()
-        };
 
         // Install into the canonical dir (the only place real files live).
         // An already-installed name (enabled or disabled) is skipped, not replaced.
-        let mut installed: Vec<InstallSuccess> = Vec::new();
-        let mut skipped: Vec<String> = Vec::new();
-        let mut failed: Vec<InstallFailure> = Vec::new();
-        for skill in &selected {
-            let r = install_skill(skill, &self.env);
-            if !r.success {
-                failed.push(InstallFailure {
-                    skill: skill.name.clone(),
-                    error: r.error.unwrap_or_default(),
-                });
-            } else if r.skipped {
-                skipped.push(skill.name.clone());
-            } else {
-                installed.push(InstallSuccess {
-                    name: skill.name.clone(),
-                    canonical_path: r.canonical_path,
-                });
-            }
+        let result = install_skill(&skill, &self.env);
+        if !result.success {
+            return Err(SkillsError::msg(
+                result.error.unwrap_or_else(|| "install failed".to_string()),
+            ));
         }
 
         Ok(AddOutcome {
             source: parsed,
-            skills,
-            selected,
-            installed,
-            skipped,
-            failed,
-            list_only: false,
+            skill,
+            canonical_path: result.canonical_path,
+            skipped: result.skipped,
         })
     }
 

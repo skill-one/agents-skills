@@ -18,15 +18,9 @@ pub enum SkillsError {
     /// YAML (de)serialization error.
     #[error(transparent)]
     Yaml(#[from] noyalib::Error),
-    /// git (libgit2) error.
-    #[error(transparent)]
-    Git(#[from] git2::Error),
     /// HTTP request error.
     #[error(transparent)]
     Http(Box<ureq::Error>),
-    /// Zip archive error.
-    #[error(transparent)]
-    Zip(#[from] zip::result::ZipError),
 }
 
 /// Project-wide unified `Result` alias.

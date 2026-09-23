@@ -37,7 +37,7 @@ fn main() -> agents_skills::Result<()> {
         source: src.display().to_string(),
         ..Default::default()
     })?;
-    println!("Installed {} skill(s)", outcome.installed.len());
+    println!("Installed: {}", outcome.skill.name);
 
     // List installed skills (serde-serializable; same shape as `list --json`).
     let skills = manager.list()?;

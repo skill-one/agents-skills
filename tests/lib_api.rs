@@ -35,7 +35,7 @@ fn lib_add_list_remove_roundtrip() {
     let (manager, home) = manager_at(&tmp);
 
     // Add a local skill.
-    let src = write_skill_source(tmp.path(), "src", "pdf");
+    let src = write_skill_source(tmp.path(), "pdf", "pdf");
     let outcome = manager
         .add(&AddRequest {
             source: src.display().to_string(),
@@ -43,10 +43,8 @@ fn lib_add_list_remove_roundtrip() {
         })
         .unwrap();
 
-    assert_eq!(outcome.skills.len(), 1);
-    assert_eq!(outcome.installed.len(), 1);
-    assert!(outcome.skipped.is_empty());
-    assert!(outcome.failed.is_empty());
+    assert_eq!(outcome.skill.name, "pdf");
+    assert!(!outcome.skipped);
     assert!(home.join(".agents/skills/pdf/SKILL.md").exists());
 
     // List finds it.
@@ -71,17 +69,15 @@ fn lib_add_skips_an_already_installed_skill() {
     let tmp = tempfile::TempDir::new().unwrap();
     let (manager, home) = manager_at(&tmp);
 
-    let src = write_skill_source(tmp.path(), "src", "pdf");
-    assert_eq!(
-        manager
+    let src = write_skill_source(tmp.path(), "pdf", "pdf");
+    assert!(
+        !manager
             .add(&AddRequest {
                 source: src.display().to_string(),
                 ..Default::default()
             })
             .unwrap()
-            .installed
-            .len(),
-        1
+            .skipped
     );
 
     // A second install of the same name is skipped, not overwritten.
@@ -91,8 +87,7 @@ fn lib_add_skips_an_already_installed_skill() {
             ..Default::default()
         })
         .unwrap();
-    assert!(outcome.installed.is_empty());
-    assert_eq!(outcome.skipped, vec!["pdf".to_string()]);
+    assert!(outcome.skipped);
     assert!(home.join(".agents/skills/pdf/SKILL.md").exists());
 
     // A *disabled* skill is still installed: still skipped.
@@ -108,7 +103,7 @@ fn lib_add_skips_an_already_installed_skill() {
             ..Default::default()
         })
         .unwrap();
-    assert_eq!(outcome.skipped, vec!["pdf".to_string()]);
+    assert!(outcome.skipped);
     assert!(!home.join(".agents/skills/pdf").exists());
     assert!(home.join(".agents/disabled-skills/pdf/SKILL.md").exists());
 }
@@ -146,7 +141,7 @@ fn lib_list_json_shape() {
     let tmp = tempfile::TempDir::new().unwrap();
     let (manager, _home) = manager_at(&tmp);
 
-    let src = write_skill_source(tmp.path(), "src", "pdf");
+    let src = write_skill_source(tmp.path(), "pdf", "pdf");
     manager
         .add(&AddRequest {
             source: src.display().to_string(),
@@ -170,7 +165,7 @@ fn lib_list_collapses_block_scalar_description() {
     let tmp = tempfile::TempDir::new().unwrap();
     let (manager, _home) = manager_at(&tmp);
 
-    let src = tmp.path().join("src");
+    let src = tmp.path().join("docx");
     std::fs::create_dir_all(&src).unwrap();
     std::fs::write(
         src.join("SKILL.md"),
@@ -358,7 +353,7 @@ fn lib_disable_then_enable_roundtrip() {
     let (manager, home) = manager_at(&tmp);
 
     // Add a local skill.
-    let src = write_skill_source(tmp.path(), "src", "pdf");
+    let src = write_skill_source(tmp.path(), "pdf", "pdf");
     manager
         .add(&AddRequest {
             source: src.display().to_string(),
@@ -404,7 +399,7 @@ fn lib_disable_enable_are_idempotent() {
     let tmp = tempfile::TempDir::new().unwrap();
     let (manager, _home) = manager_at(&tmp);
 
-    let src = write_skill_source(tmp.path(), "src", "pdf");
+    let src = write_skill_source(tmp.path(), "pdf", "pdf");
     manager
         .add(&AddRequest {
             source: src.display().to_string(),
@@ -466,7 +461,7 @@ fn third_party_reinstall(home: &Path, name: &str) {
 fn lib_enable_replaces_the_enabled_copy_of_a_reinstalled_skill() {
     let tmp = tempfile::TempDir::new().unwrap();
     let (manager, home) = manager_at(&tmp);
-    let src = write_skill_source(tmp.path(), "src", "pdf");
+    let src = write_skill_source(tmp.path(), "pdf", "pdf");
     manager
         .add(&AddRequest {
             source: src.display().to_string(),
@@ -503,7 +498,7 @@ fn lib_enable_replaces_the_enabled_copy_of_a_reinstalled_skill() {
 fn lib_disable_replaces_the_parked_copy_of_a_reinstalled_skill() {
     let tmp = tempfile::TempDir::new().unwrap();
     let (manager, home) = manager_at(&tmp);
-    let src = write_skill_source(tmp.path(), "src", "pdf");
+    let src = write_skill_source(tmp.path(), "pdf", "pdf");
     manager
         .add(&AddRequest {
             source: src.display().to_string(),

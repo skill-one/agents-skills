@@ -9,7 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::core::agents::{Env, canonical_skills_dir, disabled_skills_dir};
-use crate::core::discover::{Skill, parse_skill_md};
+use crate::core::discover::{Skill, read_skill};
 use crate::error::Result;
 
 /// Outcome of installing a single skill into the canonical dir.
@@ -96,8 +96,8 @@ fn short_digest(name: &str) -> String {
 /// normalizes to the same string.
 ///
 /// A raw name comparison is not enough — a skill adopted from an agent dir keeps
-/// that dir's original name (`PDF Master`), which need not equal
-/// `sanitize_name(frontmatter name)` (`pdf-master`). Dot-entries are never skills.
+/// that dir's original name (`PDF Master`), which need not equal its normalized
+/// slot (`pdf-master`). Dot-entries are never skills.
 fn same_skill_entries(dir: &Path, name: &str) -> Vec<PathBuf> {
     let key = sanitize_name(name);
     let Ok(entries) = fs::read_dir(dir) else {
@@ -329,16 +329,14 @@ fn list_skills_in(dir: &Path) -> Vec<InstalledSkill> {
             continue;
         }
         let skill_dir = entry.path();
-        let skill_md = skill_dir.join("SKILL.md");
-        if !skill_md.is_file() {
+        if !skill_dir.join("SKILL.md").is_file() {
             continue;
         }
-        let Some(skill) = parse_skill_md(&skill_md) else {
+        // Identity is the on-disk directory name; SKILL.md only contributes the
+        // description (best-effort). Internal skills stay hidden unless opted in.
+        let Some(skill) = read_skill(&skill_dir, false) else {
             continue;
         };
-        // The on-disk directory name is the skill's identity — the same name
-        // `remove`/`disable`/`enable` use. It may differ from the frontmatter
-        // name for a skill adopted from an agent dir.
         let name = entry.file_name().to_string_lossy().into_owned();
         let description = one_line(&skill.description);
         out.push(InstalledSkill {
@@ -528,7 +526,7 @@ mod tests {
     fn install_skill_writes_canonical_only() {
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
-        let src = tmp.path().join("src-skill");
+        let src = tmp.path().join("pdf");
         let skill = write_skill(&src, "pdf");
 
         let r = install_skill(&skill, &env);
@@ -558,7 +556,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
         let canonical_base = tmp.path().join(".agents/skills");
-        let src = tmp.path().join("src-skill");
+        let src = tmp.path().join("pdf");
         let skill = write_skill(&src, "pdf");
 
         assert!(install_skill(&skill, &env).success);
@@ -589,7 +587,7 @@ mod tests {
         // a second copy into the canonical dir.
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
-        let src = tmp.path().join("src-skill");
+        let src = tmp.path().join("pdf");
         let skill = write_skill(&src, "pdf");
 
         assert!(install_skill(&skill, &env).success);
@@ -614,7 +612,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
         let canonical_base = tmp.path().join(".agents/skills");
-        let src = tmp.path().join("src-skill");
+        let src = tmp.path().join("pdf");
         let skill = write_skill(&src, "pdf");
 
         // An unreadable file makes fs::copy fail mid-install.
@@ -735,7 +733,7 @@ mod tests {
         fs::create_dir_all(&parked).unwrap();
         fs::write(parked.join("SKILL.md"), "parked").unwrap();
 
-        let src = tmp.path().join("src-skill");
+        let src = tmp.path().join("PDF Master");
         let r = install_skill(&write_skill(&src, "PDF Master"), &env);
 
         assert!(r.success);
@@ -749,8 +747,8 @@ mod tests {
         // slot instead of being reported as a copy of the first.
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
-        let first = write_skill(&tmp.path().join("first"), "中文技能");
-        let second = write_skill(&tmp.path().join("second"), "另一技能");
+        let first = write_skill(&tmp.path().join("中文技能"), "中文技能");
+        let second = write_skill(&tmp.path().join("另一技能"), "另一技能");
 
         assert!(install_skill(&first, &env).success);
         let r = install_skill(&second, &env);
@@ -803,7 +801,7 @@ mod tests {
     fn list_installed_skills_finds_canonical() {
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
-        let src = tmp.path().join("src-skill");
+        let src = tmp.path().join("pdf");
         let skill = write_skill(&src, "pdf");
         install_skill(&skill, &env);
 
@@ -816,7 +814,7 @@ mod tests {
     fn scan_installed_lists_canonical_only() {
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
-        let src = tmp.path().join("src-skill");
+        let src = tmp.path().join("pdf");
         let skill = write_skill(&src, "pdf");
         install_skill(&skill, &env);
 
@@ -828,7 +826,7 @@ mod tests {
     fn move_skill_disables_then_enables_roundtrip() {
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
-        let src = tmp.path().join("src-skill");
+        let src = tmp.path().join("pdf");
         let skill = write_skill(&src, "pdf");
         install_skill(&skill, &env);
 
@@ -853,7 +851,7 @@ mod tests {
     fn list_disabled_skills_reports_hidden_skills() {
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
-        let src = tmp.path().join("src-skill");
+        let src = tmp.path().join("pdf");
         let skill = write_skill(&src, "pdf");
         install_skill(&skill, &env);
         move_skill("pdf", false, &env).unwrap();

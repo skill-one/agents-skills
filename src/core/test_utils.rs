@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::core::agents::Env;
-use crate::core::discover::{Skill, parse_skill_md};
+use crate::core::discover::{Skill, read_skill};
 
 /// Construct an `Env` in a temp dir: home=cwd=tmp, config=tmp/config.
 ///
@@ -33,10 +33,11 @@ pub fn skill_frontmatter(name: &str) -> String {
     format!("---\nname: {name}\ndescription: does {name}\n---\n\n# {name}\n\nBody text.\n")
 }
 
-/// Generate a SKILL.md under `dir` and parse it into a `Skill` (for install tests).
+/// Generate a SKILL.md under `dir` and read it back as a `Skill` (for install
+/// tests). `dir`'s file name is the skill name; `name` only sets frontmatter.
 pub fn write_and_parse_skill(dir: &Path, name: &str) -> Skill {
     std::fs::create_dir_all(dir).expect("create skill dir");
     let md = dir.join("SKILL.md");
     std::fs::write(&md, skill_frontmatter(name)).expect("write SKILL.md");
-    parse_skill_md(&md).expect("parse skill md")
+    read_skill(dir, false).expect("read skill dir")
 }

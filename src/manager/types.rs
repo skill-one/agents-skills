@@ -15,35 +15,31 @@ use crate::core::source::Source;
 
 /// Request for [`Manager::add`].
 ///
-/// The struct is `Default + Clone`; use [`AddRequest::new`] for the common
-/// "install everything from a source" case and struct-update syntax
-/// (`..Default::default()`) to override just the fields you need.
+/// The struct is `Default + Clone`; use [`AddRequest::new`] for the common case
+/// and struct-update syntax (`..Default::default()`) to override just the fields
+/// you need.
 ///
-/// See the crate-level [source formats](crate#source-formats) table for the accepted
-/// `source` strings.
+/// `source` accepts exactly two forms: a local skill directory (it must directly
+/// contain a `SKILL.md`), or `owner/repo@<skill>` for one named skill on GitHub.
 #[derive(Debug, Clone, Default)]
 pub struct AddRequest {
-    /// Source string (local path, GitHub `owner/repo`, git URL, or download URL).
+    /// Local skill directory, or `owner/repo@<skill>`.
     pub source: String,
-    /// `"*"` or specific skill names; empty = all discovered skills.
-    pub skills: Vec<String>,
-    /// List available skills without installing anything.
-    pub list_only: bool,
+    /// Branch, tag, or commit SHA to pin (GitHub sources only; `None` = default branch).
+    pub reference: Option<String>,
 }
 
 impl AddRequest {
-    /// Create a request that installs all skills from `source` with default options.
-    ///
-    /// All other fields default: project scope, all skills.
+    /// Create a request that installs the skill named by `source` with default options.
     ///
     /// # Examples
     ///
     /// ```
     /// use agents_skills::{AddRequest, Manager};
     ///
-    /// let req = AddRequest::new("anthropics/skills");
-    /// assert_eq!(req.source, "anthropics/skills");
-    /// assert!(req.skills.is_empty()); // all discovered skills
+    /// let req = AddRequest::new("anthropics/skills@pdf");
+    /// assert_eq!(req.source, "anthropics/skills@pdf");
+    /// assert!(req.reference.is_none()); // default branch
     /// # let _ = Manager::new();
     /// ```
     pub fn new(source: impl Into<String>) -> Self {
@@ -103,45 +99,18 @@ pub struct EnableRequest {
 
 // ============================ Outcome types ============================
 
-/// Result of [`Manager::add`].
-///
-/// Carries the full picture of an add operation: what was discovered, what was
-/// selected, and which skills were installed into the canonical dir.
+/// Result of [`Manager::add`] — one source always resolves to exactly one skill.
 #[derive(Debug)]
 pub struct AddOutcome {
     /// The parsed source.
     pub source: Source,
-    /// All discovered skills.
-    pub skills: Vec<Skill>,
-    /// Selected skills (empty when `list_only`).
-    pub selected: Vec<Skill>,
-    /// Successfully installed skills.
-    pub installed: Vec<InstallSuccess>,
-    /// Selected skills left untouched because a skill of the same name is
-    /// already installed (enabled or disabled) — `add` never overwrites.
-    pub skipped: Vec<String>,
-    /// Failed installations.
-    pub failed: Vec<InstallFailure>,
-    /// Whether this was a `--list` request.
-    pub list_only: bool,
-}
-
-/// A single successful install (one skill, into the canonical dir).
-#[derive(Debug)]
-pub struct InstallSuccess {
-    /// Skill name.
-    pub name: String,
-    /// Canonical directory.
+    /// The skill that was targeted.
+    pub skill: Skill,
+    /// Canonical directory of the skill.
     pub canonical_path: PathBuf,
-}
-
-/// A single failed install.
-#[derive(Debug)]
-pub struct InstallFailure {
-    /// Skill name.
-    pub skill: String,
-    /// Error message.
-    pub error: String,
+    /// `true` when nothing was copied because a skill of the same name is
+    /// already installed (enabled or disabled) — `add` never overwrites.
+    pub skipped: bool,
 }
 
 /// Result of linking (or unlinking) one agent's skills dir relative to the
@@ -192,8 +161,7 @@ pub struct AgentOutcome {
 #[serde(rename_all = "camelCase")]
 pub struct ListedSkill {
     /// Skill name — its on-disk directory name, the identity used by
-    /// `remove`/`disable`/`enable`. It may differ from the `SKILL.md`
-    /// frontmatter name for a skill adopted from an agent dir.
+    /// `remove`/`disable`/`enable` (the SKILL.md frontmatter `name` is ignored).
     pub name: String,
     /// Skill description (from `SKILL.md` frontmatter).
     pub description: String,

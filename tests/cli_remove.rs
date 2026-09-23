@@ -9,7 +9,7 @@ use common::TestProject;
 #[test]
 fn remove_deletes_installed_skill() {
     let p = TestProject::new();
-    let src = p.write_skill_source("my-skill", "pdf");
+    let src = p.write_skill_source("pdf", "pdf");
 
     p.skills()
         .args(["add", src.to_str().unwrap()])
@@ -29,8 +29,8 @@ fn remove_deletes_installed_skill() {
 #[test]
 fn remove_all_flag_removes_everything() {
     let p = TestProject::new();
-    let a = p.write_skill_source("skill-a", "pdf");
-    let b = p.write_skill_source("skill-b", "docx");
+    let a = p.write_skill_source("pdf", "pdf");
+    let b = p.write_skill_source("docx", "docx");
 
     p.skills()
         .args(["add", a.to_str().unwrap()])
@@ -50,7 +50,7 @@ fn remove_all_flag_removes_everything() {
 #[test]
 fn remove_without_args_prints_installed_list() {
     let p = TestProject::new();
-    let src = p.write_skill_source("my-skill", "pdf");
+    let src = p.write_skill_source("pdf", "pdf");
 
     p.skills()
         .args(["add", src.to_str().unwrap()])
@@ -124,7 +124,7 @@ fn remove_clears_a_skill_present_in_both_dirs() {
 fn remove_all_deletes_disabled_skills() {
     let p = TestProject::new();
     // An enabled skill plus a disabled one.
-    let src = p.write_skill_source("my-skill", "pdf");
+    let src = p.write_skill_source("pdf", "pdf");
     p.skills()
         .args(["add", src.to_str().unwrap()])
         .assert()

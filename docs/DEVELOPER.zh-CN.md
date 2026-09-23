@@ -32,12 +32,11 @@ src/
 ├── error.rs            统一错误类型与 Result 别名
 ├── core/               领域逻辑（纯函数、依赖可注入）
 │   ├── mod.rs          模块组织与重导出
-│   ├── source.rs       来源字符串解析
+│   ├── source.rs       来源字符串解析（本地目录或 `owner/repo@<技能>`）
 │   ├── agents.rs       agent 表的声明式解释器(目录解析 + 安装检测)
 │   ├── agents.jsonl    agent 表:每个 agent 一行 JSON
-│   ├── discover.rs     SKILL.md 发现 + frontmatter 解析
-│   ├── fetch.rs        git 克隆 / HTTP 下载 / 归档解包
-│   ├── github.rs       GitHub API 拉取（tree/contents 列表、LFS、并发下载）
+│   ├── discover.rs     技能发现：name = 目录名，描述尽力读取
+│   ├── github.rs       GitHub API 拉取（基于 tree 的目录匹配、LFS、并发下载）
 │   ├── install.rs      安装技能到规范目录 + 已装清单
 │   ├── link/           目录级 agent 链接（link/unlink）
 │   │   ├── mod.rs      链接编排 + 存量内容并入
@@ -79,24 +78,32 @@ agent 表位于 `src/core/agents.jsonl` —— 每个 agent 一行 JSON,编译�
 
 ```jsonc
 {
-  "name": "claude-code",      // 必填,唯一标识(CLI 中使用)
-  "display": "Claude Code",   // 必填,人类可读名称
-  "global": { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude", "path": "skills" } },
-  "detect": [ { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude" } } ]
+  "name": "claude-code", // 必填,唯一标识(CLI 中使用)
+  "display": "Claude Code", // 必填,人类可读名称
+  "global": {
+    "env_home": {
+      "var": "CLAUDE_CONFIG_DIR",
+      "default": ".claude",
+      "path": "skills",
+    },
+  },
+  "detect": [
+    { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude" } },
+  ],
 }
 ```
 
 `global` 是单个路径规格;`detect` 是路径规格列表——只要其中任意一条解析到
 已存在的路径,该 agent 即被视为已安装。每条规格只能包含以下键之一:
 
-| 键 | 解析为 |
-| --- | ----------- |
-| `{"home": "..."}` | `home/<path>` |
-| `{"config": "..."}` | `config/<path>` |
-| `{"cwd": "..."}` | `cwd/<path>` |
+| 键                                                              | 解析为                                     |
+| --------------------------------------------------------------- | ------------------------------------------ |
+| `{"home": "..."}`                                               | `home/<path>`                              |
+| `{"config": "..."}`                                             | `config/<path>`                            |
+| `{"cwd": "..."}`                                                | `cwd/<path>`                               |
 | `{"env_home": {"var": "...", "default": "...", "path": "..."}}` | `$VAR \|\| home/<default>`,再拼接 `<path>` |
-| `{"env_var": {"var": "...", "path": "..."}}` | `$VAR/<path>`;变量未设置时不匹配 |
-| `{"system": "/abs/path"}` | 绝对路径;仅开启系统探测时才检查 |
+| `{"env_var": {"var": "...", "path": "..."}}`                    | `$VAR/<path>`;变量未设置时不匹配           |
+| `{"system": "/abs/path"}`                                       | 绝对路径;仅开启系统探测时才检查            |
 
 agent 是否需要符号链接由 `agents.rs` 中的 `is_native` 判定:将解析后的 `global`
 路径规格与 `~/.agents/skills` 比较——只有目录恰好等于它的 agent(如 cline、warp)
@@ -104,7 +111,7 @@ agent 是否需要符号链接由 `agents.rs` 中的 `is_native` 判定:将解�
 `~/.gemini/config/skills`)需要建立真实的目录级符号链接。`universal` 伪 agent
 的 `"detect": []` 使它永远不会被检测为已安装。
 
-## 开发
+## 开发与测试
 
 ```bash
 cargo build            # 构建
@@ -113,33 +120,16 @@ cargo clippy           # lint
 cargo fmt              # 格式化
 ```
 
-## 测试
-
-测试遵循测试金字塔：
-
-- **单元测试** —— 通过 `#[cfg(test)]` 内联在 `src/` 各模块中，快速、隔离；
-  领域层夹具见 `src/core/test_utils.rs`。
-- **集成测试** —— `tests/` 中的黑盒测试通过 `assert_cmd` 驱动真实 CLI；
-  `lib_api.rs` 覆盖库 API。
-
-示例程序作为补充：
-
-```bash
-cargo run --example manage      # 在临时目录上演示 add → list → remove（无副作用）
-cargo run --example add_skill   # 通过 Manager 安装到你的真实环境
-```
-
-## 设计取舍
-
-- **极简稳定** —— 刻意保持小而稳定，注重跨平台（macOS、Linux、Windows）。
-- **纯数据** —— 库从不打印、从不调用 `process::exit`；结果结构化，错误通过
-  `Result` 上抛。
-- **无遥测** —— 不会有任何数据离开用户的机器。
+- **单元测试**内联在 `src/` 各模块（`#[cfg(test)]`），共享夹具见
+  `src/core/test_utils.rs`。
+- **集成测试**位于 `tests/`，通过 `assert_cmd` 驱动真实 CLI；`lib_api.rs`
+  覆盖库 API。
+- 示例：`cargo run --example manage`（临时目录上的生命周期演示）与
+  `cargo run --example add_skill`（真实环境）。
 
 ## 发布
 
 新版本一律通过 GitHub Actions 发布到 crates.io（见 `.github/workflows/`），
-不要在本地手动 `cargo publish`。发布前确认 `Cargo.toml` 的 `version` 已按
-语义化版本递增，并更新 [README](../README.zh-CN.md) / [CLI.zh-CN.md](CLI.zh-CN.md) /
-[LIBRARY.zh-CN.md](LIBRARY.zh-CN.md) 中涉及的版本号与接口变更，同时同步更新各文档
-对应的 `*.zh-CN.md` 中文翻译。
+不要在本地手动 `cargo publish`。发布前：按语义化版本递增 `Cargo.toml` 的
+`version`，在 `CHANGELOG.zh-CN.md`（及 `CHANGELOG.md`）记录变更，并同步各文档的
+`*.zh-CN.md` 中文翻译。

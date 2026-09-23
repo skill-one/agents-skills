@@ -38,12 +38,11 @@ src/
 ├── error.rs            Unified error type and Result alias
 ├── core/               Domain logic (pure functions, injectable dependencies)
 │   ├── mod.rs          Module organization and re-exports
-│   ├── source.rs       Source-string parsing
+│   ├── source.rs       Source-string parsing (local dir or `owner/repo@<skill>`)
 │   ├── agents.rs       Declarative interpreter over the agent table (resolution + detection)
 │   ├── agents.jsonl    The agent table: one JSON object per agent line
-│   ├── discover.rs     SKILL.md discovery + frontmatter parsing
-│   ├── fetch.rs        git clone / HTTP download / archive unpacking
-│   ├── github.rs       GitHub API fetching (tree/contents listing, LFS, parallel downloads)
+│   ├── discover.rs     Skill discovery: name = directory name, best-effort description read
+│   ├── github.rs       GitHub API fetching (tree-based directory matching, LFS, parallel downloads)
 │   ├── install.rs      Install skills into the canonical directory + installed-skills listing
 │   ├── link/           Directory-level agent linking (link/unlink)
 │   │   ├── mod.rs      Link orchestration + adoption of pre-existing content
@@ -87,10 +86,18 @@ listing order.
 
 ```jsonc
 {
-  "name": "claude-code",      // required, unique identifier (used on the CLI)
-  "display": "Claude Code",   // required, human-readable name
-  "global": { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude", "path": "skills" } },
-  "detect": [ { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude" } } ]
+  "name": "claude-code", // required, unique identifier (used on the CLI)
+  "display": "Claude Code", // required, human-readable name
+  "global": {
+    "env_home": {
+      "var": "CLAUDE_CONFIG_DIR",
+      "default": ".claude",
+      "path": "skills",
+    },
+  },
+  "detect": [
+    { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude" } },
+  ],
 }
 ```
 
@@ -98,23 +105,23 @@ listing order.
 is detected as installed when any one of them resolves to an existing path.
 Exactly one of these keys per spec:
 
-| Key | Resolves to |
-| --- | ----------- |
-| `{"home": "..."}` | `home/<path>` |
-| `{"config": "..."}` | `config/<path>` |
-| `{"cwd": "..."}` | `cwd/<path>` |
-| `{"env_home": {"var": "...", "default": "...", "path": "..."}}` | `$VAR \|\| home/<default>`, then `<path>` joined |
-| `{"env_var": {"var": "...", "path": "..."}}` | `$VAR/<path>`; unmatched when the var is unset |
-| `{"system": "/abs/path"}` | absolute path; only probed when system probing is on |
+| Key                                                             | Resolves to                                          |
+| --------------------------------------------------------------- | ---------------------------------------------------- |
+| `{"home": "..."}`                                               | `home/<path>`                                        |
+| `{"config": "..."}`                                             | `config/<path>`                                      |
+| `{"cwd": "..."}`                                                | `cwd/<path>`                                         |
+| `{"env_home": {"var": "...", "default": "...", "path": "..."}}` | `$VAR \|\| home/<default>`, then `<path>` joined     |
+| `{"env_var": {"var": "...", "path": "..."}}`                    | `$VAR/<path>`; unmatched when the var is unset       |
+| `{"system": "/abs/path"}`                                       | absolute path; only probed when system probing is on |
 
 Whether an agent needs a symlink is decided by `is_native` in `agents.rs`: the
 resolved `global` spec is compared against `~/.agents/skills` — only agents
-whose dir equals it (e.g. cline, warp) are native and need no link. Agents with
-a vendor-specific dir (e.g. Antigravity's `~/.gemini/config/skills`) get a real
-directory symlink. The `universal` pseudo-agent carries `"detect": []` so it is never detected as
-installed.
+whose dir equals it (e.g. cline, warp) are native and need no link; agents with
+a vendor-specific dir (e.g. Antigravity's `~/.gemini/config/skills`) get a
+real directory symlink. The `universal` pseudo-agent carries `"detect": []` so
+it is never detected as installed.
 
-## Development
+## Development & testing
 
 ```bash
 cargo build            # build
@@ -123,36 +130,17 @@ cargo clippy           # lint
 cargo fmt              # format
 ```
 
-## Testing
-
-Tests follow the test pyramid:
-
-- **Unit tests** — inline in the `src/` modules via `#[cfg(test)]`, fast and
-  isolated; domain-layer fixtures live in `src/core/test_utils.rs`.
-- **Integration tests** — black-box tests in `tests/` that drive the real CLI
-  via `assert_cmd`; `lib_api.rs` covers the library API.
-
-Example programs complement the tests:
-
-```bash
-cargo run --example manage      # demonstrates add → list → remove on a temp directory (no side effects)
-cargo run --example add_skill   # installs into your real environment via the Manager
-```
-
-## Design trade-offs
-
-- **Minimal and stable** — deliberately kept small and stable, with
-  cross-platform care (macOS, Linux, Windows).
-- **Pure data** — the library never prints, never calls `process::exit`;
-  results are structured and errors surface through `Result`.
-- **No telemetry** — no data ever leaves the user's machine.
+- **Unit tests** live inline in `src/` modules (`#[cfg(test)]`); shared
+  fixtures are in `src/core/test_utils.rs`.
+- **Integration tests** in `tests/` drive the real CLI via `assert_cmd`;
+  `lib_api.rs` covers the library API.
+- Examples: `cargo run --example manage` (lifecycle on a temp directory) and
+  `cargo run --example add_skill` (real environment).
 
 ## Releasing
 
 Releases to crates.io always go through GitHub Actions (see
-`.github/workflows/`) — never run `cargo publish` manually. Before releasing,
-make sure the `version` in `Cargo.toml` has been bumped according to semantic
-versioning, update the version numbers and API changes described in the
-[README](../README.md) / [CLI.md](CLI.md) / [LIBRARY.md](LIBRARY.md), and keep
-the Chinese translations (the `*.zh-CN.md` files alongside each document) in
-sync.
+`.github/workflows/`) — never run `cargo publish` manually. Before releasing:
+bump `version` in `Cargo.toml` per semantic versioning, record the change in
+`CHANGELOG.md` (and `CHANGELOG.zh-CN.md`), and keep the `*.zh-CN.md`
+translations in sync.

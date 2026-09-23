@@ -8,9 +8,9 @@
 English | [简体中文](README.zh-CN.md)
 
 A minimal installer and manager for AI agent skills: all skills live in one
-**canonical directory**, and a single `agent --link` makes them visible and
-usable to [Claude Code](https://claude.com/code), Codex, Cursor, and 70+ other
-coding agents — install once, works everywhere.
+**canonical directory**, and a single `agent --link` makes them visible to
+[Claude Code](https://claude.com/code), Codex, Cursor, and 70+ other coding
+agents — install once, works everywhere.
 
 ```bash
 cargo install agents-skills
@@ -21,121 +21,52 @@ Also ships as an embeddable Rust library — see [docs/LIBRARY.md](docs/LIBRARY.
 ## Quick start
 
 ```bash
-agents-skills agent --link            # link all installed agents
-agents-skills add anthropics/skills   # install a skill pack (visible to every agent immediately once it lands in the canonical directory)
-agents-skills list                    # list installed skills
-agents-skills agent --status          # show the link status of each agent
+agents-skills agent --link                  # link all installed agents
+agents-skills add anthropics/skills@pdf     # install one skill
+agents-skills list                          # list installed skills
 ```
-
-The core idea is linking: skills are stored exactly once in the canonical
-directory (`~/.agents/skills/`), and
-`agent --link` creates, for every installed agent, a symlink in its skills
-directory pointing at the canonical directory; skills installed afterwards via
-`add` become visible to all agents immediately — no syncing needed.
 
 ## How it works
 
-`add`/`remove`/`disable`/`enable` only operate on the canonical
-directory; agents share it automatically through the symlinks. Common commands:
+Every skill is stored exactly once in the canonical directory
+`~/.agents/skills/<name>` (disabled skills in
+`~/.agents/disabled-skills/<name>`). `agent --link` points each installed
+agent's skills directory at it with a symlink, so skills installed afterwards
+are visible to all agents immediately — no syncing.
 
 ```bash
-agents-skills agent --link claude-code            # link (pre-existing content is adopted into the canonical directory)
-agents-skills agent --unlink claude-code          # unlink (adopted content stays in the canonical directory)
-agents-skills add anthropics/skills@pdf            # install only the specified skill
-agents-skills list --json                          # machine-readable output
-agents-skills remove pdf                           # remove a skill
-agents-skills disable pdf                          # disable (moved out of the canonical directory, files kept)
-agents-skills enable pdf                           # re-enable (inverse of disable)
+agents-skills add owner/repo@pdf            # install from GitHub
+agents-skills add ./my-skill                # install a local skill directory
+agents-skills add owner/repo@pdf --ref v1.2 # pin a branch, tag, or commit SHA
+agents-skills list --json                   # machine-readable output
+agents-skills remove pdf                    # remove a skill
+agents-skills disable pdf                   # disable (files kept) / enable: inverse
+agents-skills agent --link claude-code      # link one agent
+agents-skills agent --unlink claude-code    # unlink (adopted content stays)
+agents-skills agent --status                # show link status and private content
 ```
 
-- Commands always operate on the canonical directory `~/.agents/skills`.
-- `add` only ever adds: a skill whose name is already installed — enabled *or*
-  disabled — is reported as `skipped` and left untouched, so local edits are
-  never silently discarded. Replace one with `remove` first, then `add`.
-- Linking adopts whatever the agent's skills directory already holds, and that
-  is one-way: skill directories are moved into the canonical directory,
-  non-skill entries into `.misc/<agent>/` inside it, and name clashes are
-  dropped in favour of the existing copy (the canonical copy wins; a skill
-  disabled in `disabled-skills` stays disabled rather than being re-imported).
-  `agent --unlink` disconnects the agent but does **not** move adopted content
-  back — manage it with `remove`/`disable` from then on.
-- For unlinked agents, `agent --status` categorizes the contents of their own
-  skills directory (`private skills` / `other files`) — that is, what linking
-  would adopt; content of linked/canonical agents is shown by `list`.
-- `list` always shows every skill with its description, path, `enabled`/`disabled`
-  status and an approximate install time (`installedAt` in `--json`).
+Key behaviors:
 
-### Source formats
+- **Sources** — `add` installs exactly one named skill: either a local
+  directory that directly contains `SKILL.md`, or `owner/repo@<skill>` from
+  GitHub (matched on the skill directory name, case-insensitively; a
+  root-level `SKILL.md` is selected with the repository name). Without `--ref`
+  the default branch is used. Set `GITHUB_TOKEN` to raise the GitHub API rate
+  limit.
+- **Never overwrite** — a skill already installed (enabled or disabled) is
+  reported `skipped`; `remove` it first to replace it.
+- **Linking adopts existing content one-way** — skill directories move into
+  the canonical directory, other files into its `.misc/<agent>/`, and name
+  clashes keep the existing copy. `--unlink` disconnects but does not move
+  content back.
 
-The `<source>` argument of `add` accepts:
+## Documentation
 
-| Format              | Example                                                          |
-| ------------------- | ---------------------------------------------------------------- |
-| Local path          | `./my-skill`, `/abs/path/skill`                                  |
-| GitHub shorthand    | `owner/repo`                                                     |
-| GitHub / GitLab URL | `https://github.com/owner/repo`, `https://gitlab.com/group/repo` |
-| SSH / git URL       | `git@github.com:owner/repo.git`                                  |
-| HTTPS download      | `https://example.com/skills.zip`, `.../skills.tar.gz`, raw `SKILL.md` |
-
-Common ways to narrow a GitHub source (GitLab works the same, with
-`/-/tree/...` instead of `/tree/...`):
-
-| You want                            | Write                                                 |
-| ----------------------------------- | ----------------------------------------------------- |
-| Everything in the repo              | `owner/repo`                                          |
-| Only one skill                      | `owner/repo@pdf` (same as `--skill pdf`)              |
-| Only a subdirectory                 | `owner/repo/skills/pdf`                               |
-| A branch, tag, or commit            | `https://github.com/owner/repo/tree/v1.2`             |
-| A subdirectory at a specific ref    | `https://github.com/owner/repo/tree/v1.2/skills/pdf`  |
-| One skill from a subdirectory       | `agents-skills add owner/repo/skills/pdf --skill pdf` |
-
-Rules for Git sources:
-
-- A ref (branch / tag / commit SHA) can only be expressed in the URL:
-  `/tree/<ref>[/<path>]` for GitHub, `/-/tree/<ref>[/<path>]` for GitLab
-  (including self-hosted instances). The shorthand, plain repo URLs, and
-  SSH / git URLs have no ref syntax and always resolve to the default branch.
-- The shorthand cannot combine a subdirectory with `@skill` — use `--skill`
-  instead. GitHub / GitLab URLs without `/tree/` (e.g.
-  `https://github.com/owner/repo/skills/pdf`) and `/blob/` file URLs are
-  rejected with an error instead of silently installing the wrong scope.
-
-HTTPS sources are downloaded and extracted directly (zip / tar / tar.gz
-archive, or a single file such as a raw `SKILL.md`).
-
-Within a repository, skills are discovered in priority-ordered container
-directories (`skills/`, `.curated/`, `.experimental/`, `.system/`); shallower
-directories shadow deeper ones.
-
-### Install locations
-
-- **Canonical directory (the single real copy)** — `~/.agents/skills/<name>`;
-  disabled skills live in `~/.agents/disabled-skills/<name>`.
-- **Agent integration** — agents that do not natively read the canonical
-  directory get a directory-level symlink: `~/.claude/skills` →
-  `~/.agents/skills`, and likewise for every other agent.
-
-## Command cheat sheet
-
-| Command   | Description                            |
-| --------- | -------------------------------------- |
-| `add`     | Install a skill pack from a source     |
-| `remove`  | Remove installed skills                |
-| `list`    | List installed skills                  |
-| `disable` | Disable an installed skill             |
-| `enable`  | Re-enable a disabled skill             |
-| `agent`   | Link / unlink / show agent link status |
-
-Commands have no aliases (a minimal interface — full names only).
-
-> For the full command-line reference see [docs/CLI.md](docs/CLI.md); library
-> users see [docs/LIBRARY.md](docs/LIBRARY.md); project developers see
-> [docs/DEVELOPER.md](docs/DEVELOPER.md).
-
-## Changelog
-
-Notable changes per release are documented in [CHANGELOG.md](CHANGELOG.md)
-(中文版见 [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)).
+- [docs/CLI.md](docs/CLI.md) — full command reference
+- [docs/LIBRARY.md](docs/LIBRARY.md) — embeddable Rust library
+- [docs/DEVELOPER.md](docs/DEVELOPER.md) — architecture and contributing
+- [CHANGELOG.md](CHANGELOG.md) — release notes ([中文版](CHANGELOG.zh-CN.md))
 
 ## License
 
