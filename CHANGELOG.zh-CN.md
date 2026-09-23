@@ -7,6 +7,46 @@
 
 英文版见 [CHANGELOG.md](CHANGELOG.md)。
 
+## [0.22.0] — 2026-09-23
+
+### 变更
+
+- **(breaking)** 技能的身份一律取目录名。任何流程都不再读取或匹配
+  `SKILL.md` frontmatter 中的 `name` 字段——本地安装、`list`、GitHub
+  安装统一使用目录的 basename。对于 `owner/repo@<技能>`，直接在仓库 tree
+  中查找包含 `SKILL.md` 的目录，其 basename 与 `<技能>` 大小写不敏感匹配
+  （最浅的匹配优先），且只下载该目录。
+- 放在仓库根目录的 `SKILL.md` 用仓库名选择（`owner/repo@<仓库名>`），
+  此时下载整个仓库。
+- `SKILL.md` 缺失或 frontmatter 无法解析不再致命：描述为空字符串，
+  技能仍可正常安装。
+
+## [0.21.0] — 2026-09-23
+
+### 变更
+
+- **(breaking)** `add` 现在只安装一个显式指定的技能，来源语法收敛为两种：
+  本地技能目录（必须直接包含 `SKILL.md`），以及 GitHub 上的
+  `owner/repo@<技能>`——按 frontmatter 名称或目录名大小写不敏感匹配。git ref
+  改用新增的 `--ref <分支|标签|SHA>` 选项（库 API：`AddRequest.reference`）指定，
+  不再通过 `/tree/<ref>` URL 表达；省略时使用仓库默认分支。
+- **(breaking，库)** `AddRequest` 现在只有 `source` 与 `reference` 两个字段；
+  `AddOutcome` 描述单个技能（`source`、`skill`、`canonical_path`、
+  `skipped: bool`）。安装失败以 `Err` 返回；`InstallSuccess` / `InstallFailure`
+  类型已移除。
+- 所有远程安装统一走 GitHub API，只下载匹配到的技能目录（整仓压缩包路径已删除）。
+
+### 移除
+
+- **(breaking)** GitLab 支持（含自建实例）、SSH 与通用 `git clone` 来源、
+  直接 HTTPS 下载（zip / tar 压缩包与原始文件）、完整 GitHub URL
+  （`/tree/`、`/blob/`）、仓库子路径来源（`owner/repo/skills/pdf`）、裸仓库
+  安装（`owner/repo`）、`--skill`/`-s` 选项、`--list`/`-l` 选项、`'*'` 选择器，
+  以及一次 `add` 传入多个来源。每种被拒绝的形式都会打印指向受支持语法的报错。
+- `git2`、`zip`、`tar`、`flate2` 四个依赖与 `core::fetch` 模块
+  （克隆 / 下载 / 解包），以及仓库级技能发现（容器目录、agent 目录扫描、
+  全树回退）一并移除。
+
 ## [0.20.0] — 2026-09-22
 
 ### 变更
@@ -398,7 +438,9 @@
 - chore:升级 git2 至 0.21 以修复 RUSTSEC 安全通告。
 - chore:双许可证、GitHub Actions、crates.io 发布元数据。
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/skill-one/agents-skills/compare/v0.21.0...v0.22.0
+[0.21.0]: https://github.com/skill-one/agents-skills/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/skill-one/agents-skills/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/skill-one/agents-skills/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/skill-one/agents-skills/compare/v0.17.0...v0.18.0

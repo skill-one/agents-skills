@@ -1,6 +1,6 @@
 [package]
 name = "agents-skills"
-version = "0.20.0"
+version = "0.22.0"
 edition = "2024"
 description = "A minimal, stable, easy-to-understand skill installer and manager for AI agents"
 license = "MIT OR Apache-2.0"
@@ -21,14 +21,10 @@ clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 noyalib = { version = "0.0.45", features = [] }
-git2 = { version = "0.21", features = ["https", "vendored-libgit2"] }
 ureq = { version = "3", features = ["gzip"] }
 dirs = "7"
 tempfile = "3"
 thiserror = "2"
-zip = { version = "8", default-features = false, features = ["deflate"] }
-tar = "0.4"
-flate2 = "1"
 pathdiff = "0.2"
 url = "2"
 jiff = { version = "0.2.37", default-features = false, features = ["std", "tz-system"] }

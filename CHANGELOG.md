@@ -7,6 +7,53 @@ the project adheres to [Semantic Versioning](https://semver.org/): while in
 
 For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## [0.22.0] — 2026-09-23
+
+### Changed
+
+- **(breaking)** A skill's identity is always its directory name. The
+  `SKILL.md` frontmatter `name` field is no longer read or matched anywhere —
+  local installs, `list`, and GitHub installs all use the directory basename.
+  For `owner/repo@<skill>`, the repository tree is searched for a directory
+  containing a `SKILL.md` whose basename matches `<skill>` case-insensitively
+  (shallowest match wins), and only that directory is downloaded.
+- A `SKILL.md` placed at the repository root is selected with the repository
+  name (`owner/repo@<repo>`) and installs the whole repository.
+- A missing or unparseable `SKILL.md` / frontmatter is no longer fatal: the
+  description is then empty and the skill still installs.
+
+## [0.21.0] — 2026-09-23
+
+### Changed
+
+- **(breaking)** `add` now installs exactly one explicitly named skill, and
+  the source syntax is reduced to two forms: a local skill directory (it must
+  directly contain a `SKILL.md`) and `owner/repo@<skill>` for one skill on
+  GitHub — matched on the frontmatter name or the directory name,
+  case-insensitively. A git ref is pinned with the new `--ref <branch|tag|SHA>`
+  flag (library: `AddRequest.reference`) instead of a `/tree/<ref>` URL; without
+  it the repository's default branch is used.
+- **(breaking, library)** `AddRequest` now has only `source` and `reference`
+  fields, and `AddOutcome` describes one skill (`source`, `skill`,
+  `canonical_path`, `skipped: bool`). An install failure is returned as `Err`;
+  the `InstallSuccess` / `InstallFailure` types are removed.
+- Every remote install now goes through the GitHub API and downloads only the
+  matched skill directory (the whole-repo archive path is gone).
+
+### Removed
+
+- **(breaking)** GitLab support (including self-hosted instances), SSH and
+  generic `git clone` sources, direct HTTPS downloads (zip / tar archives and
+  raw files), full GitHub URLs (`/tree/`, `/blob/`), repository subpath sources
+  (`owner/repo/skills/pdf`), bare repository installs (`owner/repo`), the
+  `--skill`/`-s` flag, the `--list`/`-l` flag, the `'*'` selector, and multiple
+  source arguments on one `add` invocation. Each rejected form prints an error
+  pointing at the supported syntax.
+- The `git2`, `zip`, `tar`, and `flate2` dependencies and the `core::fetch`
+  module (clone / download / unpack), along with repository-wide skill
+  discovery (container directories, agent-directory scanning, full-tree
+  fallback).
+
 ## [0.20.0] — 2026-09-22
 
 ### Changed
@@ -50,9 +97,9 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
   (`disabled-skills/PDF Master` for `pdf-master`) was therefore missed, and `add`
   created a second copy of an already-installed skill — one name in both dirs,
   which `enable` / `disable` then had to resolve.
-- fix(remove): removal now deletes *every* copy of a name — both dirs, under
+- fix(remove): removal now deletes _every_ copy of a name — both dirs, under
   either spelling — instead of looking up the canonical name only, so `remove
-  --all` can no longer leave a parked duplicate behind. A name is reported as
+--all` can no longer leave a parked duplicate behind. A name is reported as
   removed only when something was actually deleted; a failed delete no longer
   counts as success.
 - fix(add): a skill whose name is not ASCII no longer collapses onto a shared
@@ -84,7 +131,7 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
   a genuinely unavailable API reports the failure and names `GITHUB_TOKEN` as the
   remedy for the 60 requests/hour unauthenticated rate limit. A repository-wide
   install, `--list`, and GitLab keep using the archive — it is their only path.
-- `enable` / `disable` now resolve a skill present in *both* dirs by overwriting
+- `enable` / `disable` now resolve a skill present in _both_ dirs by overwriting
   instead of failing. A disabled skill can be re-installed at any time by a
   third-party tool, or by an agent sharing the canonical dir, so one name living
   in both `skills/` and `disabled-skills/` is a normal state rather than an error.
@@ -130,16 +177,16 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
   resolved skills dir against `~/.agents/skills`. The project-scope
   `.misc/.gitignore` trick went away with it — `$HOME` is not version
   controlled. `discover`'s `AGENT_PROJECT_SKILL_DIRS` is unrelated (it lists
-  container dirs to scan inside a *source* repository) and stays.
+  container dirs to scan inside a _source_ repository) and stays.
   `PathSpec::Cwd` and cwd-based detection rules stay too: they describe where an
   agent is installed, not a scope.
 
 ### Changed
 
 - **(breaking)** `add` no longer overwrites an installed skill. A selected skill
-  whose name is already installed — enabled *or* disabled — is reported in the
+  whose name is already installed — enabled _or_ disabled — is reported in the
   new `AddOutcome.skipped` and left untouched. Local edits are therefore never
-  silently discarded, and installing over a *disabled* skill can no longer leave
+  silently discarded, and installing over a _disabled_ skill can no longer leave
   a duplicate copy behind (one name in both `skills/` and `disabled-skills/`).
   Replace an installed skill with `remove` + `add` — that is also how it is
   updated now, since `update` was removed in 0.13.0.
@@ -154,7 +201,7 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
   reported success without deleting anything.
 
 - (link) Name clashes on adopt are detected across normalized and unnormalized
-  names in *both* skills dirs. The canonical dir was only checked with the raw
+  names in _both_ skills dirs. The canonical dir was only checked with the raw
   name, so e.g. `pdf-master` (canonical) plus `PDF Master` (agent) both ended up
   installed under the same skill name.
 
@@ -204,7 +251,7 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 ### Removed
 
 - **(breaking)** The backup-slot mechanism and the `--migrate` flag. `agent
-  --link` now adopts a non-empty skills directory outright instead of parking it
+--link` now adopts a non-empty skills directory outright instead of parking it
   under `.agents/backup-skills/<agent>/`: skill directories are moved into the
   canonical dir, non-skill entries into `.misc/<agent>/` inside it (a dot-dir,
   so install/discovery scans never mistake them for skills), and name clashes
@@ -458,7 +505,9 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 - chore: upgrade git2 to 0.21 to fix RUSTSEC advisories.
 - chore: dual license, GitHub Actions, crates.io release metadata.
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/skill-one/agents-skills/compare/v0.21.0...v0.22.0
+[0.21.0]: https://github.com/skill-one/agents-skills/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/skill-one/agents-skills/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/skill-one/agents-skills/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/skill-one/agents-skills/compare/v0.17.0...v0.18.0
