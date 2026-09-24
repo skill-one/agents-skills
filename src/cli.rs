@@ -43,7 +43,7 @@ pub struct AddArgs {
     /// A local skill directory, or `owner/repo@<skill>` (one skill on GitHub)
     #[arg(required = true)]
     pub source: String,
-    /// Pin a branch, tag, or commit SHA (GitHub sources only)
+    /// Pin a branch, tag, or full commit SHA (GitHub sources only)
     #[arg(long = "ref", value_name = "ref")]
     pub reference: Option<String>,
 }

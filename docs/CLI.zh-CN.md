@@ -24,17 +24,19 @@ tree 中查找包含 `SKILL.md` 的目录，其 basename 与 `<技能>` 大小�
 
 | 选项          | 说明                                          |
 | ------------- | --------------------------------------------- |
-| `--ref <ref>` | 指定分支、标签或 commit SHA（仅 GitHub 来源） |
+| `--ref <ref>` | 指定分支、标签或完整 commit SHA（仅 GitHub 来源） |
 
 ```bash
 agents-skills add ./my-skill                        # 安装本地技能
 agents-skills add anthropics/skills@pdf             # 从 GitHub 安装一个技能
-agents-skills add anthropics/skills@pdf --ref v1.2  # 指定分支、标签或 commit SHA
+agents-skills add anthropics/skills@pdf --ref v1.2  # 指定分支、标签或完整 commit SHA
 ```
 
-远程安装走 GitHub API，只下载匹配到的技能目录；设置 `GITHUB_TOKEN` 可提升速率
-限制。其他来源形式（裸 `owner/repo`、完整 URL、子路径、GitLab/SSH、HTTPS
-压缩包）均会被拒绝，报错会指明受支持的语法。
+远程安装是单次请求：从 `codeload.github.com` 下载整个仓库的 tarball，解包到
+临时目录后在本地选择匹配的技能目录。完全不使用 GitHub REST API，因此不存在
+API 速率限制；仅支持公开仓库，Git LFS 文件以指针占位文件形式安装。不加
+`--ref` 时使用默认分支。其他来源形式（裸 `owner/repo`、完整
+URL、子路径、GitLab/SSH、HTTPS 压缩包）均会被拒绝，报错会指明受支持的语法。
 
 `add` 绝不覆盖：同名技能已安装（无论启用或禁用）时报告 `skipped`；想替换请先
 `remove`。安装后运行 `agent --link` 让 agent 可见。

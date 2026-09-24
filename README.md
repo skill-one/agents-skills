@@ -52,8 +52,10 @@ Key behaviors:
   directory that directly contains `SKILL.md`, or `owner/repo@<skill>` from
   GitHub (matched on the skill directory name, case-insensitively; a
   root-level `SKILL.md` is selected with the repository name). Without `--ref`
-  the default branch is used. Set `GITHUB_TOKEN` to raise the GitHub API rate
-  limit.
+  the default branch is used. A remote install is a **single request** that
+  downloads the repository tarball from `codeload.github.com` — the GitHub
+  REST API is never used, so there is no API rate limit. Public repositories
+  only; Git LFS files install as their pointer stubs.
 - **Never overwrite** — a skill already installed (enabled or disabled) is
   reported `skipped`; `remove` it first to replace it.
 - **Linking adopts existing content one-way** — skill directories move into

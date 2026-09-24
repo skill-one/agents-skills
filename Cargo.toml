@@ -26,7 +26,8 @@ dirs = "7"
 tempfile = "3"
 thiserror = "2"
 pathdiff = "0.2"
-url = "2"
+tar = "0.4"
+flate2 = "1"
 jiff = { version = "0.2.37", default-features = false, features = ["std", "tz-system"] }
 
 [dev-dependencies]

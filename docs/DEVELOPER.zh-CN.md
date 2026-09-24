@@ -36,7 +36,7 @@ src/
 │   ├── agents.rs       agent 表的声明式解释器(目录解析 + 安装检测)
 │   ├── agents.jsonl    agent 表:每个 agent 一行 JSON
 │   ├── discover.rs     技能发现：name = 目录名，描述尽力读取
-│   ├── github.rs       GitHub API 拉取（基于 tree 的目录匹配、LFS、并发下载）
+│   ├── github.rs       GitHub tarball 拉取（codeload 单请求 + 本地目录匹配）
 │   ├── install.rs      安装技能到规范目录 + 已装清单
 │   ├── link/           目录级 agent 链接（link/unlink）
 │   │   ├── mod.rs      链接编排 + 存量内容并入

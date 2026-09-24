@@ -42,7 +42,7 @@ src/
 │   ├── agents.rs       Declarative interpreter over the agent table (resolution + detection)
 │   ├── agents.jsonl    The agent table: one JSON object per agent line
 │   ├── discover.rs     Skill discovery: name = directory name, best-effort description read
-│   ├── github.rs       GitHub API fetching (tree-based directory matching, LFS, parallel downloads)
+│   ├── github.rs       GitHub tarball fetching (codeload single request + local directory matching)
 │   ├── install.rs      Install skills into the canonical directory + installed-skills listing
 │   ├── link/           Directory-level agent linking (link/unlink)
 │   │   ├── mod.rs      Link orchestration + adoption of pre-existing content

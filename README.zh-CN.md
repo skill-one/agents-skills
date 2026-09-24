@@ -48,7 +48,9 @@ agents-skills agent --status                # 查看链接状态与私有内容
 - **来源** —— `add` 只安装一个显式命名的技能：要么是直接包含
   `SKILL.md` 的本地目录，要么是 GitHub 上的 `owner/repo@<技能>`（按技能
   目录名大小写不敏感匹配；根目录下的 `SKILL.md` 用仓库名选择）。不加
-  `--ref` 时使用默认分支。可设置 `GITHUB_TOKEN` 提高 GitHub API 速率限制。
+  `--ref` 时使用默认分支。远程安装是**单次请求**：从 `codeload.github.com`
+  下载整个仓库的 tarball——完全不使用 GitHub REST API，因此不存在 API
+  速率限制。仅支持公开仓库；Git LFS 文件会以指针占位文件的形式安装。
 - **绝不覆盖** —— 同名技能已安装（无论启用或禁用）时报告 `skipped`；想替换
   请先 `remove`。
 - **链接单向并入存量内容** —— 技能目录移入规范目录，其他文件移入其内的

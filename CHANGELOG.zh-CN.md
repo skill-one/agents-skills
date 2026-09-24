@@ -7,6 +7,24 @@
 
 英文版见 [CHANGELOG.md](CHANGELOG.md)。
 
+## [0.23.0] — 2026-09-24
+
+### 变更
+
+- **(breaking)** 远程 GitHub 安装改为单次请求：从 `codeload.github.com` 下载
+  整个仓库的 tarball，解包到临时目录后在本地匹配目标技能。完全不使用
+  GitHub REST API，匿名每分钟 60 次的 API 速率限制不再构成约束。
+- **(breaking)** 不再读取 `GITHUB_TOKEN`：仅支持公开仓库。
+- **(breaking)** Git LFS 文件以指针占位文件的形式安装，不再通过
+  `media.githubusercontent.com` 解析真实对象。
+- **(breaking)** `--ref` 不再接受缩写的 commit SHA（请使用分支、标签或完整
+  40 位 SHA）。不加 `--ref` 时使用仓库默认分支（`HEAD`）。
+- 移除了逐文件并发下载、带回退的递归 tree 列表与 ref 解析——全部由单次
+  tarball 请求取代。可执行位改由 tar 归档保留的权限恢复。
+- 依赖：新增 `tar` 与 `flate2`（纯 Rust）；移除 `url`。
+
+## Unreleased
+
 ## [0.22.0] — 2026-09-23
 
 ### 变更

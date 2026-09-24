@@ -7,6 +7,30 @@ the project adheres to [Semantic Versioning](https://semver.org/): while in
 
 For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## [0.23.0] — 2026-09-24
+
+### Changed
+
+- **(breaking)** Remote GitHub installs are now a single request: the whole
+  repository tarball is downloaded from `codeload.github.com`, unpacked into a
+  temp dir, and the named skill is matched locally. The GitHub REST API is
+  never used, so the anonymous 60-requests-per-hour API rate limit no longer
+  applies.
+- **(breaking)** `GITHUB_TOKEN` is no longer read: only public repositories
+  are supported.
+- **(breaking)** Git LFS files install as their pointer stubs; LFS objects are
+  no longer resolved through `media.githubusercontent.com`.
+- **(breaking)** `--ref` no longer accepts abbreviated commit SHAs (use a
+  branch, a tag, or a full 40-character SHA). Without `--ref` the repository's
+  default branch (`HEAD`) is used.
+- Removed the per-file parallel downloads, the recursive tree listing with its
+  truncation fallback, and the ref-to-SHA resolution — all replaced by the
+  single tarball request. The executable bit now comes from the tar archive's
+  preserved permissions.
+- Dependencies: added `tar` and `flate2` (pure Rust); removed `url`.
+
+## Unreleased
+
 ## [0.22.0] — 2026-09-23
 
 ### Changed

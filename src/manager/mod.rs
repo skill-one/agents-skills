@@ -101,11 +101,12 @@ impl Manager {
     /// matches, case-insensitively, a repository directory that directly
     /// contains `SKILL.md` (shallowest match wins); a `SKILL.md` at the
     /// repository root is selected with the repository name. The frontmatter
-    /// `name` is ignored. Pin a branch, tag, or commit SHA with
+    /// `name` is ignored. Pin a branch, tag, or full commit SHA with
     /// [`AddRequest::reference`]; otherwise the repository's default branch is
-    /// used. Remote installs go through the GitHub API, which downloads only the
-    /// matched skill directory — set `GITHUB_TOKEN` to raise its rate limit
-    /// (60 → 5000 requests/hour).
+    /// used. A remote install is a **single request** that downloads the
+    /// repository tarball from `codeload.github.com` — the GitHub REST API is
+    /// never used, so there is no API rate limit. Public repositories only;
+    /// Git LFS files install as their pointer stubs.
     ///
     /// The skill is installed into the canonical dir (the only place real files
     /// live). `add` only ever adds: when a skill of the same name is already

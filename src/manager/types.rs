@@ -25,7 +25,7 @@ use crate::core::source::Source;
 pub struct AddRequest {
     /// Local skill directory, or `owner/repo@<skill>`.
     pub source: String,
-    /// Branch, tag, or commit SHA to pin (GitHub sources only; `None` = default branch).
+    /// Branch, tag, or full commit SHA to pin (GitHub sources only; `None` = default branch).
     pub reference: Option<String>,
 }
 

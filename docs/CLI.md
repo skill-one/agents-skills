@@ -27,16 +27,20 @@ The frontmatter `name` field is ignored everywhere.
 
 | Option        | Description                                            |
 | ------------- | ------------------------------------------------------ |
-| `--ref <ref>` | Pin a branch, tag, or commit SHA (GitHub sources only) |
+| `--ref <ref>` | Pin a branch, tag, or full commit SHA (GitHub sources only) |
 
 ```bash
 agents-skills add ./my-skill                        # install a local skill
 agents-skills add anthropics/skills@pdf             # install one skill from GitHub
-agents-skills add anthropics/skills@pdf --ref v1.2  # pin a branch, tag, or commit SHA
+agents-skills add anthropics/skills@pdf --ref v1.2  # pin a branch, tag, or full commit SHA
 ```
 
-Remote installs go through the GitHub API and download only the matched skill
-directory; set `GITHUB_TOKEN` to raise the rate limit. Any other source form
+Remote installs are a single request: the whole repository tarball is
+downloaded from `codeload.github.com`, unpacked into a temp dir, and the
+matched skill directory is selected locally. The GitHub REST API is never
+used, so there is no API rate limit; public repositories only, and Git LFS
+files install as their pointer stubs. Without `--ref` the default branch is
+used. Any other source form
 (bare `owner/repo`, full URLs, subpaths, GitLab/SSH, HTTPS archives) is rejected
 with a message naming the supported syntax.
 
