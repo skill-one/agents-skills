@@ -5,8 +5,9 @@
 //! rate limit does not apply. The archive is unpacked into a temp dir and the
 //! skill is matched locally: a skill is a **directory** that directly contains
 //! `SKILL.md` and whose directory name matches the requested name
-//! (case-insensitive, shallowest match wins); a `SKILL.md` at the repository
-//! root is selected by the repository name. Nothing but the single tarball
+//! (case-insensitive, shallowest match wins). When no directory matches, a
+//! `SKILL.md` at the repository root falls back to the whole repository as the
+//! skill, named after the repository. Nothing but the single tarball
 //! request is needed; public repositories only, and Git LFS files install as
 //! their pointer stubs.
 //!
@@ -49,10 +50,10 @@ pub fn fetch_skill(
 /// The error for a skill name the repository does not contain.
 fn not_found_message(skill_name: &str, slug: &str) -> String {
     format!(
-        "No skill directory named \"{skill_name}\" found in {slug}. \
-         The name after @ matches a directory containing SKILL.md \
-         (case-insensitive); a SKILL.md at the repository root is selected \
-         with the repository name."
+        "No skill named \"{skill_name}\" found in {slug} and no SKILL.md at the \
+         repository root. The name after @ matches a directory containing \
+         SKILL.md (case-insensitive); without a match, a SKILL.md at the \
+         repository root installs the whole repository."
     )
 }
 
@@ -170,7 +171,9 @@ fn repo_root_of(root: &Path) -> PathBuf {
 /// A directory that directly contains `SKILL.md` whose name matches
 /// (case-insensitive) is a candidate; the shallowest wins, ties broken by path
 /// for determinism. A root-level manifest has no directory name, so it takes
-/// the repository name.
+/// the repository name. When no directory matches, a `SKILL.md` at the
+/// repository root is the fallback: the whole repository becomes the skill,
+/// named after the repository, whatever name was requested.
 fn select_skill(repo_root: &Path, repo: &str, skill_name: &str) -> Result<Option<Skill>> {
     let mut candidates: Vec<(usize, String)> = Vec::new();
     collect_manifest_dirs(repo_root, "", &mut candidates)?;
@@ -195,20 +198,31 @@ fn select_skill(repo_root: &Path, repo: &str, skill_name: &str) -> Result<Option
     }
 
     let Some((_, dir)) = matched else {
-        return Ok(None);
+        // No directory matched: fall back to a root-level SKILL.md, if any.
+        return Ok(root_skill(repo_root, repo));
     };
     // The matched directory is the skill; the manifest contributes only the
     // description. Explicit selection also makes internal skills visible.
     // The root case has no directory name, so the skill is named after the
     // repository.
     Ok(if dir.is_empty() {
-        Some(Skill {
-            name: repo.to_string(),
-            description: read_description(&repo_root.join("SKILL.md")),
-            dir: repo_root.to_path_buf(),
-        })
+        root_skill(repo_root, repo)
     } else {
         read_skill(&repo_root.join(&dir), true)
+    })
+}
+
+/// The root-level manifest as a skill named after the repository, or `None`
+/// when the repository root has no `SKILL.md`.
+fn root_skill(repo_root: &Path, repo: &str) -> Option<Skill> {
+    let manifest = repo_root.join("SKILL.md");
+    if !manifest.is_file() {
+        return None;
+    }
+    Some(Skill {
+        name: repo.to_string(),
+        description: read_description(&manifest),
+        dir: repo_root.to_path_buf(),
     })
 }
 
@@ -521,6 +535,57 @@ mod tests {
     }
 
     #[test]
+    fn fetch_unmatched_name_falls_back_to_root_skill_md() {
+        // No directory matches the requested name: a root-level SKILL.md
+        // silently installs the whole repository under the repository name.
+        let body = tarball(
+            "skills-main",
+            &[
+                (
+                    "SKILL.md",
+                    "---\nname: whatever\ndescription: root skill\n---\nbody",
+                    0o644,
+                ),
+                (
+                    "pdf/SKILL.md",
+                    "---\nname: pdf\ndescription: d\n---\nbody",
+                    0o644,
+                ),
+                ("README.md", "# repo", 0o644),
+            ],
+            &[],
+        );
+        let (get, _urls) = fake_get(&[FORM_HEAD], body);
+        let (tmp, skill) = fetch_skill_with("acme", "skills", "typo-name", None, &get)
+            .unwrap()
+            .expect("root manifest should fall back");
+        assert_eq!(skill.name, "skills");
+        assert_eq!(skill.description, "root skill");
+        let root = tmp.path().join("skills-main");
+        assert_eq!(skill.dir, root);
+        assert!(root.join("SKILL.md").is_file());
+    }
+
+    #[test]
+    fn fetch_directory_name_still_beats_root_fallback() {
+        // With a root SKILL.md present, a directory match still wins.
+        let body = tarball(
+            "skills-main",
+            &[
+                ("SKILL.md", "---\ndescription: root skill\n---\nbody", 0o644),
+                ("pdf/SKILL.md", "---\ndescription: subdir\n---\nbody", 0o644),
+            ],
+            &[],
+        );
+        let (get, _urls) = fake_get(&[FORM_HEAD], body);
+        let (tmp, skill) = fetch_skill_with("acme", "skills", "pdf", None, &get)
+            .unwrap()
+            .expect("pdf should match");
+        assert_eq!(skill.description, "subdir");
+        assert_eq!(skill.dir, tmp.path().join("skills-main").join("pdf"));
+    }
+
+    #[test]
     fn fetch_no_match_returns_none() {
         let body = tarball(
             "skills-main",
@@ -550,7 +615,7 @@ mod tests {
     #[test]
     fn fetch_public_not_found_is_a_clean_message() {
         let msg = not_found_message("zzz", "acme/skills");
-        assert!(msg.contains("No skill directory named \"zzz\""), "{msg}");
+        assert!(msg.contains("No skill named \"zzz\""), "{msg}");
         assert!(msg.contains("acme/skills"), "{msg}");
         assert!(!msg.contains("download failed"), "{msg}");
     }

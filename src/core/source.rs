@@ -7,8 +7,9 @@
 //! - **GitHub skill** — `owner/repo@<skill>`: one named skill from a GitHub
 //!   repository. `<skill>` is a skill **directory name** — a directory
 //!   directly containing `SKILL.md`, matched case-insensitively (shallowest
-//!   wins); a `SKILL.md` at the repository root is selected with the
-//!   repository name. The git ref (branch / tag / commit SHA) is orthogonal
+//!   wins). When no directory matches, a `SKILL.md` at the repository root
+//!   falls back to the whole repository as the skill, named after the
+//!   repository. The git ref (branch / tag / commit SHA) is orthogonal
 //!   to the source string and supplied separately.
 //!
 //! Everything else is rejected with a hint: bare `owner/repo`, full GitHub URLs,

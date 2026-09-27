@@ -50,8 +50,9 @@ Key behaviors:
 
 - **Sources** — `add` installs exactly one named skill: either a local
   directory that directly contains `SKILL.md`, or `owner/repo@<skill>` from
-  GitHub (matched on the skill directory name, case-insensitively; a
-  root-level `SKILL.md` is selected with the repository name). Without `--ref`
+  GitHub (matched on the skill directory name, case-insensitively; when no
+  directory matches, a root-level `SKILL.md` falls back to installing the
+  whole repository under the repository name). Without `--ref`
   the default branch is used. A remote install is a **single request** that
   downloads the repository tarball from `codeload.github.com` — the GitHub
   REST API is never used, so there is no API rate limit. Public repositories

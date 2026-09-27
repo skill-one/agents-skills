@@ -21,9 +21,10 @@ agents-skills add <source> [--ref <ref>]
 `SKILL.md`) or `owner/repo@<skill>`, naming one skill on GitHub. A skill's
 name is always its directory name: the repository tree is searched for a
 directory containing `SKILL.md` whose basename matches `<skill>`
-case-insensitively (shallowest match wins). A `SKILL.md` at the repository
-root is selected with the repository name and installs the whole repository.
-The frontmatter `name` field is ignored everywhere.
+case-insensitively (shallowest match wins). When no directory matches, a
+`SKILL.md` at the repository root falls back to installing the whole
+repository under the repository name. The frontmatter `name` field is
+ignored everywhere.
 
 | Option        | Description                                            |
 | ------------- | ------------------------------------------------------ |

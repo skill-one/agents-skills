@@ -99,8 +99,9 @@ impl Manager {
     /// `SKILL.md`) or `owner/repo@<skill>`, naming one skill on GitHub. The
     /// skill name is always its **directory name**: for GitHub sources it
     /// matches, case-insensitively, a repository directory that directly
-    /// contains `SKILL.md` (shallowest match wins); a `SKILL.md` at the
-    /// repository root is selected with the repository name. The frontmatter
+    /// contains `SKILL.md` (shallowest match wins); when no directory matches,
+    /// a `SKILL.md` at the repository root falls back to the whole repository
+    /// as the skill, named after the repository. The frontmatter
     /// `name` is ignored. Pin a branch, tag, or full commit SHA with
     /// [`AddRequest::reference`]; otherwise the repository's default branch is
     /// used. A remote install is a **single request** that downloads the

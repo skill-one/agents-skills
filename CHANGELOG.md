@@ -7,6 +7,15 @@ the project adheres to [Semantic Versioning](https://semver.org/): while in
 
 For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## [0.24.0] — 2026-09-27
+
+### Changed
+
+- When `owner/repo@<skill>` matches no skill directory, a `SKILL.md` at the
+  repository root now silently installs the whole repository under the
+  repository name, instead of failing unless the requested name equaled the
+  repository name. A directory match still wins over this fallback.
+
 ## [0.23.0] — 2026-09-24
 
 ### Changed
