@@ -83,10 +83,10 @@ fn link_agent_native_agent_is_already_linked() {
 
 #[test]
 fn link_agent_skipped_when_dir_cannot_be_resolved() {
-    // promptscript's skills dir is env-var based and the var is unset.
+    // eve's skills dir is env-var based and the var is unset.
     let tmp = tempfile::TempDir::new().unwrap();
     let env = env_at(&tmp);
-    let agent = get_agent("promptscript").unwrap();
+    let agent = get_agent("eve").unwrap();
     assert!(matches!(link_agent(agent, &env), LinkOutcome::Skipped));
 }
 

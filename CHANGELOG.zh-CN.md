@@ -33,6 +33,15 @@
 
 ## Unreleased
 
+### 变更
+
+- **(breaking)** agent 表的 `global` 字段更名为 `skills_dir`，agent 表改为取自上游
+  [`skill-one/agents-info`](https://github.com/skill-one/agents-info)，并通过
+  `scripts/sync-agents.sh`（需要 `curl` 与 `jq`）重新生成。上游额外的展示字段
+  （`website` / `icon` / `repo` / `stars`）会被丢弃。
+- 移除了上游已不再包含的三个 agent：`jazz`、`loaf`、`promptscript`
+  （agent 表现有 81 行）。
+
 ## [0.22.0] — 2026-09-23
 
 ### 变更

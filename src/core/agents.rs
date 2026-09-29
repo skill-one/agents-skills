@@ -27,6 +27,10 @@ pub const DISABLED_SKILLS_DIR: &str = ".agents/disabled-skills";
 
 /// Embedded agent table: one JSON object per agent line (blank lines and `#` comments
 /// allowed). Schema documented in `docs/DEVELOPER.md`.
+///
+/// The data comes from the upstream source of truth
+/// [`skill-one/agents-info`](https://github.com/skill-one/agents-info) and is
+/// regenerated with `scripts/sync-agents.sh`.
 static AGENT_TABLE_JSONL: &str = include_str!("agents.jsonl");
 
 /// Context for agent detection/dir resolution (owns data, easy to inject in tests).
@@ -198,7 +202,7 @@ pub struct Agent {
     /// Human-readable display name.
     pub display: String,
     /// Skills directory the agent reads.
-    pub global: PathSpec,
+    pub skills_dir: PathSpec,
     /// Install detection rules (any match = installed; empty = never detected).
     #[serde(default)]
     pub detect: Vec<PathSpec>,
@@ -246,7 +250,7 @@ pub fn get_agent(name: &str) -> Option<&'static Agent> {
 /// its resolved skills dir is `~/.agents/skills` itself.
 pub fn is_native(agent: &Agent, env: &Env) -> bool {
     agent
-        .global
+        .skills_dir
         .resolve(env)
         .is_some_and(|dir| normalize_lexical(&dir) == normalize_lexical(&canonical_skills_dir(env)))
 }
@@ -271,7 +275,7 @@ pub fn disabled_skills_dir(env: &Env) -> PathBuf {
 /// canonical dir itself; check [`is_native`] before treating it as a linkable
 /// location.
 pub fn agent_skills_dir(agent: &Agent, env: &Env) -> Option<PathBuf> {
-    agent.global.resolve(env)
+    agent.skills_dir.resolve(env)
 }
 
 /// Determine whether an agent is installed: any detection rule resolves to an existing path.
@@ -343,10 +347,10 @@ mod tests {
     fn is_native_false_when_env_var_unset() {
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
-        // promptscript's dir is env-var-based: unresolved → not native.
-        let promptscript = get_agent("promptscript").unwrap();
-        assert!(!is_native(promptscript, &env));
-        assert_eq!(agent_skills_dir(promptscript, &env), None);
+        // eve's dir is env-var-based: unresolved → not native.
+        let eve = get_agent("eve").unwrap();
+        assert!(!is_native(eve, &env));
+        assert_eq!(agent_skills_dir(eve, &env), None);
     }
 
     #[test]
@@ -456,7 +460,7 @@ mod tests {
     #[test]
     fn agent_table_parses_comments_and_blank_lines() {
         let table = parse_agent_table(
-            "# header comment\n\n{\"name\":\"x\",\"display\":\"X\",\"global\":{\"home\":\".x/skills\"},\"detect\":[{\"home\":\".x\"}]}\n\n",
+            "# header comment\n\n{\"name\":\"x\",\"display\":\"X\",\"skills_dir\":{\"home\":\".x/skills\"},\"detect\":[{\"home\":\".x\"}]}\n\n",
         );
         assert_eq!(table.len(), 1);
         assert_eq!(table[0].name, "x");
@@ -465,8 +469,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "duplicate agent 'x'")]
     fn agent_table_rejects_duplicate_names() {
-        let one = r#"{"name":"x","display":"X","global":{"home":".x"},"detect":[]}"#;
-        let two = r#"{"name":"x","display":"Y","global":{"home":".y"},"detect":[]}"#;
+        let one = r#"{"name":"x","display":"X","skills_dir":{"home":".x"},"detect":[]}"#;
+        let two = r#"{"name":"x","display":"Y","skills_dir":{"home":".y"},"detect":[]}"#;
         parse_agent_table(&format!("{one}\n{two}\n"));
     }
 
@@ -474,13 +478,13 @@ mod tests {
     #[should_panic(expected = "agents.jsonl line 2:")]
     fn agent_table_reports_offending_line() {
         parse_agent_table(
-            "{\"name\":\"x\",\"display\":\"X\",\"global\":{\"home\":\".x\"},\"detect\":[]}\nnot json\n",
+            "{\"name\":\"x\",\"display\":\"X\",\"skills_dir\":{\"home\":\".x\"},\"detect\":[]}\nnot json\n",
         );
     }
 
     #[test]
     fn agent_table_row_count() {
         let agents: &'static [Agent] = *AGENTS;
-        assert_eq!(agents.len(), 84);
+        assert_eq!(agents.len(), 81);
     }
 }

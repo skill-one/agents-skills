@@ -68,19 +68,25 @@ tests/
 ├── cli_agent.rs
 ├── cli_enable_disable.rs
 └── cli_version.rs
+
+scripts/
+└── sync-agents.sh      从上游 agents-info 重新生成 agent 表
 ```
 
 ## 新增 agent
 
 agent 表位于 `src/core/agents.jsonl` —— 每个 agent 一行 JSON,编译期通过
-`include_str!` 嵌入二进制。新增、修改或删除 agent 只需编辑该文件的一行,
-无需改动任何 Rust 代码。允许空行和 `#` 注释,文件中的行序即列表展示顺序。
+`include_str!` 嵌入二进制。数据来自上游真源
+[`skill-one/agents-info`](https://github.com/skill-one/agents-info):运行
+`scripts/sync-agents.sh`(需要 `curl` 与 `jq`),检查 diff 后提交。不要手工编辑该表
+——上游仅额外提供展示字段(`website` / `icon` / `repo` / `stars`),本项目会丢弃。
+允许空行和 `#` 注释,文件中的行序即列表展示顺序。
 
 ```jsonc
 {
   "name": "claude-code", // 必填,唯一标识(CLI 中使用)
   "display": "Claude Code", // 必填,人类可读名称
-  "global": {
+  "skills_dir": {
     "env_home": {
       "var": "CLAUDE_CONFIG_DIR",
       "default": ".claude",
@@ -93,7 +99,7 @@ agent 表位于 `src/core/agents.jsonl` —— 每个 agent 一行 JSON,编译�
 }
 ```
 
-`global` 是单个路径规格;`detect` 是路径规格列表——只要其中任意一条解析到
+`skills_dir` 是单个路径规格;`detect` 是路径规格列表——只要其中任意一条解析到
 已存在的路径,该 agent 即被视为已安装。每条规格只能包含以下键之一:
 
 | 键                                                              | 解析为                                     |
@@ -105,7 +111,7 @@ agent 表位于 `src/core/agents.jsonl` —— 每个 agent 一行 JSON,编译�
 | `{"env_var": {"var": "...", "path": "..."}}`                    | `$VAR/<path>`;变量未设置时不匹配           |
 | `{"system": "/abs/path"}`                                       | 绝对路径;仅开启系统探测时才检查            |
 
-agent 是否需要符号链接由 `agents.rs` 中的 `is_native` 判定:将解析后的 `global`
+agent 是否需要符号链接由 `agents.rs` 中的 `is_native` 判定:将解析后的 `skills_dir`
 路径规格与 `~/.agents/skills` 比较——只有目录恰好等于它的 agent(如 cline、warp)
 才是原生的,无需链接。厂商私有目录的 agent(如 Antigravity 的
 `~/.gemini/config/skills`)需要建立真实的目录级符号链接。`universal` 伪 agent

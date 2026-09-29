@@ -40,6 +40,16 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 ## Unreleased
 
+### Changed
+
+- **(breaking)** The agent table's `global` field is renamed to `skills_dir`, and
+  the table is now sourced from the upstream
+  [`skill-one/agents-info`](https://github.com/skill-one/agents-info) and
+  regenerated with `scripts/sync-agents.sh` (requires `curl` and `jq`). Extra
+  upstream presentation fields (`website` / `icon` / `repo` / `stars`) are dropped.
+- Removed three agents no longer present upstream: `jazz`, `loaf`, and
+  `promptscript` (the agent table now has 81 rows).
+
 ## [0.22.0] — 2026-09-23
 
 ### Changed

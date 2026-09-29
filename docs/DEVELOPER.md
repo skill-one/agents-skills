@@ -74,21 +74,27 @@ tests/
 ├── cli_agent.rs
 ├── cli_enable_disable.rs
 └── cli_version.rs
+
+scripts/
+└── sync-agents.sh      Regenerate the agent table from upstream agents-info
 ```
 
 ## Adding an agent
 
 The agent table lives in `src/core/agents.jsonl` — one JSON object per agent,
-embedded into the binary at compile time (`include_str!`). Adding, changing, or
-removing an agent is a one-line edit in that file; no Rust changes are required.
-Blank lines and `#` comments are allowed, and the file order defines the
-listing order.
+embedded into the binary at compile time (`include_str!`). The data is synced
+from the upstream source of truth
+[`skill-one/agents-info`](https://github.com/skill-one/agents-info): run
+`scripts/sync-agents.sh` (requires `curl` and `jq`), review the diff, and commit.
+Do not hand-edit the table — upstream only adds presentation fields
+(`website` / `icon` / `repo` / `stars`) that this project drops. Blank lines and
+`#` comments are allowed, and the file order defines the listing order.
 
 ```jsonc
 {
   "name": "claude-code", // required, unique identifier (used on the CLI)
   "display": "Claude Code", // required, human-readable name
-  "global": {
+  "skills_dir": {
     "env_home": {
       "var": "CLAUDE_CONFIG_DIR",
       "default": ".claude",
@@ -101,7 +107,7 @@ listing order.
 }
 ```
 
-`global` is a single path spec, and `detect` is a list of path specs — an agent
+`skills_dir` is a single path spec, and `detect` is a list of path specs — an agent
 is detected as installed when any one of them resolves to an existing path.
 Exactly one of these keys per spec:
 
@@ -115,7 +121,7 @@ Exactly one of these keys per spec:
 | `{"system": "/abs/path"}`                                       | absolute path; only probed when system probing is on |
 
 Whether an agent needs a symlink is decided by `is_native` in `agents.rs`: the
-resolved `global` spec is compared against `~/.agents/skills` — only agents
+resolved `skills_dir` spec is compared against `~/.agents/skills` — only agents
 whose dir equals it (e.g. cline, warp) are native and need no link; agents with
 a vendor-specific dir (e.g. Antigravity's `~/.gemini/config/skills`) get a
 real directory symlink. The `universal` pseudo-agent carries `"detect": []` so
