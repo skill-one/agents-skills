@@ -7,6 +7,18 @@ the project adheres to [Semantic Versioning](https://semver.org/): while in
 
 For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## [0.25.0] — 2026-09-29
+
+### Changed
+
+- **(breaking)** The agent table's `global` field is renamed to `skills_dir`, and
+  the table is now sourced from the upstream
+  [`skill-one/agents-info`](https://github.com/skill-one/agents-info) and
+  regenerated with `scripts/sync-agents.sh` (requires `curl` and `jq`). Extra
+  upstream presentation fields (`website` / `icon` / `repo` / `stars`) are dropped.
+- Removed three agents no longer present upstream: `jazz`, `loaf`, and
+  `promptscript` (the agent table now has 81 rows).
+
 ## [0.24.0] — 2026-09-27
 
 ### Changed
@@ -37,18 +49,6 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
   single tarball request. The executable bit now comes from the tar archive's
   preserved permissions.
 - Dependencies: added `tar` and `flate2` (pure Rust); removed `url`.
-
-## Unreleased
-
-### Changed
-
-- **(breaking)** The agent table's `global` field is renamed to `skills_dir`, and
-  the table is now sourced from the upstream
-  [`skill-one/agents-info`](https://github.com/skill-one/agents-info) and
-  regenerated with `scripts/sync-agents.sh` (requires `curl` and `jq`). Extra
-  upstream presentation fields (`website` / `icon` / `repo` / `stars`) are dropped.
-- Removed three agents no longer present upstream: `jazz`, `loaf`, and
-  `promptscript` (the agent table now has 81 rows).
 
 ## [0.22.0] — 2026-09-23
 
@@ -548,7 +548,10 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 - chore: upgrade git2 to 0.21 to fix RUSTSEC advisories.
 - chore: dual license, GitHub Actions, crates.io release metadata.
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/skill-one/agents-skills/compare/v0.24.0...v0.25.0
+[0.24.0]: https://github.com/skill-one/agents-skills/compare/v0.23.0...v0.24.0
+[0.23.0]: https://github.com/skill-one/agents-skills/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/skill-one/agents-skills/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/skill-one/agents-skills/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/skill-one/agents-skills/compare/v0.19.0...v0.20.0

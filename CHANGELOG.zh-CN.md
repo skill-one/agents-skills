@@ -7,6 +7,17 @@
 
 英文版见 [CHANGELOG.md](CHANGELOG.md)。
 
+## [0.25.0] — 2026-09-29
+
+### 变更
+
+- **(breaking)** agent 表的 `global` 字段更名为 `skills_dir`，agent 表改为取自上游
+  [`skill-one/agents-info`](https://github.com/skill-one/agents-info)，并通过
+  `scripts/sync-agents.sh`（需要 `curl` 与 `jq`）重新生成。上游额外的展示字段
+  （`website` / `icon` / `repo` / `stars`）会被丢弃。
+- 移除了上游已不再包含的三个 agent：`jazz`、`loaf`、`promptscript`
+  （agent 表现有 81 行）。
+
 ## [0.24.0] — 2026-09-27
 
 ### 变更
@@ -30,17 +41,6 @@
 - 移除了逐文件并发下载、带回退的递归 tree 列表与 ref 解析——全部由单次
   tarball 请求取代。可执行位改由 tar 归档保留的权限恢复。
 - 依赖：新增 `tar` 与 `flate2`（纯 Rust）；移除 `url`。
-
-## Unreleased
-
-### 变更
-
-- **(breaking)** agent 表的 `global` 字段更名为 `skills_dir`，agent 表改为取自上游
-  [`skill-one/agents-info`](https://github.com/skill-one/agents-info)，并通过
-  `scripts/sync-agents.sh`（需要 `curl` 与 `jq`）重新生成。上游额外的展示字段
-  （`website` / `icon` / `repo` / `stars`）会被丢弃。
-- 移除了上游已不再包含的三个 agent：`jazz`、`loaf`、`promptscript`
-  （agent 表现有 81 行）。
 
 ## [0.22.0] — 2026-09-23
 
@@ -473,7 +473,10 @@
 - chore:升级 git2 至 0.21 以修复 RUSTSEC 安全通告。
 - chore:双许可证、GitHub Actions、crates.io 发布元数据。
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/skill-one/agents-skills/compare/v0.24.0...v0.25.0
+[0.24.0]: https://github.com/skill-one/agents-skills/compare/v0.23.0...v0.24.0
+[0.23.0]: https://github.com/skill-one/agents-skills/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/skill-one/agents-skills/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/skill-one/agents-skills/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/skill-one/agents-skills/compare/v0.19.0...v0.20.0
