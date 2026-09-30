@@ -18,6 +18,7 @@ use std::sync::LazyLock;
 use serde::Deserialize;
 
 use crate::core::path_util::normalize_lexical;
+use crate::error::{Result, SkillsError};
 
 /// The canonical skills dir, relative to the home directory.
 pub const UNIVERSAL_SKILLS_DIR: &str = ".agents/skills";
@@ -47,6 +48,10 @@ pub struct Env {
     /// `home`/`config`/`cwd` (e.g. `/Applications/ZCode.app`). Tests and
     /// sandboxes turn this off so detection stays hermetic.
     probe_system_dirs: bool,
+    /// Whether skills declaring `metadata.internal` are listed and scanned.
+    /// Defaults to `false`; the CLI resolves the `INSTALL_INTERNAL_SKILLS`
+    /// env var at manager construction, keeping library sandboxes hermetic.
+    install_internal_skills: bool,
 }
 
 impl Env {
@@ -58,6 +63,7 @@ impl Env {
             cwd: cwd.as_ref().to_path_buf(),
             vars: None,
             probe_system_dirs: true,
+            install_internal_skills: false,
         }
     }
 
@@ -81,19 +87,32 @@ impl Env {
     pub fn set_probe_system_dirs(&mut self, probe: bool) {
         self.probe_system_dirs = probe;
     }
-}
 
-/// config dir: `$XDG_CONFIG_HOME || ~/.config`.
-pub fn config_home() -> PathBuf {
-    match std::env::var("XDG_CONFIG_HOME") {
-        Ok(v) if !v.trim().is_empty() => PathBuf::from(v.trim()),
-        _ => home().join(".config"),
+    /// Whether skills declaring `metadata.internal` are listed and scanned.
+    pub fn install_internal_skills(&self) -> bool {
+        self.install_internal_skills
+    }
+
+    /// Toggle visibility of internal skills (default `false`).
+    pub fn set_install_internal_skills(&mut self, install: bool) {
+        self.install_internal_skills = install;
     }
 }
 
-/// Resolve the user's home directory.
-pub fn home() -> PathBuf {
-    dirs::home_dir().unwrap_or_default()
+/// config dir: `$XDG_CONFIG_HOME || ~/.config`.
+pub fn config_home() -> Result<PathBuf> {
+    match std::env::var("XDG_CONFIG_HOME") {
+        Ok(v) if !v.trim().is_empty() => Ok(PathBuf::from(v.trim())),
+        _ => Ok(home()?.join(".config")),
+    }
+}
+
+/// Resolve the user's home directory; an error when the platform cannot
+/// determine one — silently falling back to an empty path would resolve
+/// `~/.agents` against the current directory instead.
+pub fn home() -> Result<PathBuf> {
+    dirs::home_dir()
+        .ok_or_else(|| SkillsError::msg("cannot determine the home directory (set $HOME)"))
 }
 
 /// `$VAR || home/<default>` (with an optional sub-path) — agent homes like Claude's.
@@ -206,6 +225,10 @@ pub struct Agent {
     /// Install detection rules (any match = installed; empty = never detected).
     #[serde(default)]
     pub detect: Vec<PathSpec>,
+    /// Link even when the agent's root dir does not exist (historical
+    /// exception for `claude-code`: skills should work before first launch).
+    #[serde(default)]
+    pub link_without_root: bool,
 }
 
 /// Parse the JSONL table; invalid input is a build bug, so it panics with the line number.
@@ -486,5 +509,11 @@ mod tests {
     fn agent_table_row_count() {
         let agents: &'static [Agent] = *AGENTS;
         assert_eq!(agents.len(), 81);
+    }
+
+    #[test]
+    fn claude_code_links_without_root() {
+        assert!(get_agent("claude-code").unwrap().link_without_root);
+        assert!(!get_agent("codex").unwrap().link_without_root);
     }
 }

@@ -29,7 +29,7 @@ fn main() -> agents_skills::Result<()> {
         .home(tmp.path().join("home"))
         .config(tmp.path().join("config"))
         .cwd(project)
-        .build();
+        .build()?;
 
     // Add a local skill (installs into the canonical dir; no agent linking).
     let src = write_skill(tmp.path(), "hello");

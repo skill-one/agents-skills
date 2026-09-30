@@ -39,5 +39,5 @@ pub fn write_and_parse_skill(dir: &Path, name: &str) -> Skill {
     std::fs::create_dir_all(dir).expect("create skill dir");
     let md = dir.join("SKILL.md");
     std::fs::write(&md, skill_frontmatter(name)).expect("write SKILL.md");
-    read_skill(dir, false).expect("read skill dir")
+    read_skill(dir).expect("read skill dir")
 }

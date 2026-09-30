@@ -40,7 +40,13 @@ fn main() {
         return;
     }
 
-    let manager = Manager::new();
+    let manager = match Manager::new() {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    };
 
     let result: Result<()> = match cli.command {
         Some(Command::Add(a)) => commands::add::run(&manager, a),

@@ -20,6 +20,10 @@ pub struct Skill {
     pub name: String,
     /// Skill description from frontmatter.
     pub description: String,
+    /// Whether the frontmatter declares `metadata.internal`. Internal skills
+    /// are hidden from `list` and the scanners unless the environment opts in
+    /// (`INSTALL_INTERNAL_SKILLS`); explicit selection never filters them.
+    pub internal: bool,
     /// Directory containing SKILL.md. Its file name is the install slot —
     /// the directory the skill is installed under, verbatim.
     pub dir: PathBuf,
@@ -71,26 +75,17 @@ fn validated_frontmatter(dir: &Path) -> Option<(String, String, bool)> {
 ///
 /// The skill name comes from the SKILL.md frontmatter, which must declare a
 /// non-empty `name`; the description is optional ([`validated_frontmatter`]).
-/// `None` is returned when the directory is not a skill, or when the skill is
-/// internal and not allowed (explicit selection passes `allow_internal =
-/// true`; otherwise the `INSTALL_INTERNAL_SKILLS=1` opt-in applies).
-pub fn read_skill(dir: &Path, allow_internal: bool) -> Option<Skill> {
+/// `None` is returned when the directory is not a skill. Whether an internal
+/// skill is visible is a caller concern: the skill carries the
+/// [`Skill::internal`] flag, and the scanners apply the environment opt-in.
+pub fn read_skill(dir: &Path) -> Option<Skill> {
     let (name, description, internal) = validated_frontmatter(dir)?;
-    if internal && !allow_internal && !install_internal_skills() {
-        return None;
-    }
     Some(Skill {
         name,
         description,
+        internal,
         dir: dir.to_path_buf(),
     })
-}
-
-fn install_internal_skills() -> bool {
-    match std::env::var("INSTALL_INTERNAL_SKILLS") {
-        Ok(v) => v == "1" || v == "true",
-        Err(_) => false,
-    }
 }
 
 #[cfg(test)]
@@ -104,7 +99,7 @@ mod tests {
         // The directory name is irrelevant: the frontmatter declares identity.
         write_skill_md(tmp.path(), "skills/acrobat", "pdf");
         let dir = tmp.path().join("skills/acrobat");
-        let skill = read_skill(&dir, false).unwrap();
+        let skill = read_skill(&dir).unwrap();
         assert_eq!(skill.name, "pdf");
         assert_eq!(skill.description, "does pdf");
         assert_eq!(skill.dir, dir);
@@ -118,7 +113,7 @@ mod tests {
         let dir = tmp.path().join("no-name");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("SKILL.md"), "---\ndescription: d\n---\nbody").unwrap();
-        assert!(read_skill(&dir, false).is_none());
+        assert!(read_skill(&dir).is_none());
 
         // Blank name.
         let dir = tmp.path().join("blank-name");
@@ -128,29 +123,29 @@ mod tests {
             "---\nname: \"  \"\ndescription: d\n---\nbody",
         )
         .unwrap();
-        assert!(read_skill(&dir, false).is_none());
+        assert!(read_skill(&dir).is_none());
 
         // No frontmatter, invalid YAML, missing manifest: not skills.
         let dir = tmp.path().join("no-fm");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("SKILL.md"), "# just a heading\n").unwrap();
-        assert!(read_skill(&dir, false).is_none());
+        assert!(read_skill(&dir).is_none());
 
         let dir = tmp.path().join("bad-yaml");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("SKILL.md"), "---\nname: [unclosed\n---\nbody").unwrap();
-        assert!(read_skill(&dir, false).is_none());
+        assert!(read_skill(&dir).is_none());
 
         let dir = tmp.path().join("no-md");
         std::fs::create_dir_all(&dir).unwrap();
-        assert!(read_skill(&dir, false).is_none());
+        assert!(read_skill(&dir).is_none());
 
         // A missing or blank description is fine: the skill stays valid with
         // an empty description.
         let dir = tmp.path().join("no-desc");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("SKILL.md"), "---\nname: x\n---\nbody").unwrap();
-        let skill = read_skill(&dir, false).unwrap();
+        let skill = read_skill(&dir).unwrap();
         assert_eq!(skill.name, "x");
         assert_eq!(skill.description, "");
 
@@ -162,7 +157,7 @@ mod tests {
         )
         .unwrap();
         // The description is kept as declared — only the name is validated.
-        assert_eq!(read_skill(&dir, false).unwrap().description, "  ");
+        assert_eq!(read_skill(&dir).unwrap().description, "  ");
     }
 
     #[test]
@@ -175,13 +170,13 @@ mod tests {
             "---\nname: \" pdf \"\ndescription: |\n  Multi line\n  description here\n---\nbody",
         )
         .unwrap();
-        let skill = read_skill(&dir, false).unwrap();
+        let skill = read_skill(&dir).unwrap();
         assert_eq!(skill.name, "pdf");
         assert!(skill.description.contains("Multi line"));
     }
 
     #[test]
-    fn internal_skill_hidden_by_default() {
+    fn internal_flag_is_reported_not_filtered() {
         let tmp = tempfile::TempDir::new().unwrap();
         let dir = tmp.path().join("secret");
         std::fs::create_dir_all(&dir).unwrap();
@@ -190,8 +185,16 @@ mod tests {
             "---\nname: secret\ndescription: internal\nmetadata:\n  internal: true\n---\nbody",
         )
         .unwrap();
-        assert!(read_skill(&dir, false).is_none());
-        // Visible when explicitly selected.
-        assert!(read_skill(&dir, true).is_some());
+        // read_skill never filters; the flag lets callers apply their policy.
+        assert!(read_skill(&dir).unwrap().internal);
+
+        let dir = tmp.path().join("plain");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("SKILL.md"),
+            "---\nname: plain\ndescription: d\n---\nb",
+        )
+        .unwrap();
+        assert!(!read_skill(&dir).unwrap().internal);
     }
 }

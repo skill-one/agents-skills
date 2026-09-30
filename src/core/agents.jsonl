@@ -6,7 +6,7 @@
 {"name":"autohand-code","display":"Autohand Code CLI","skills_dir":{"env_home":{"var":"AUTOHAND_HOME","default":".autohand","path":"skills"}},"detect":[{"env_home":{"var":"AUTOHAND_HOME","default":".autohand"}}]}
 {"name":"augment","display":"Augment","skills_dir":{"home":".augment/skills"},"detect":[{"home":".augment"}]}
 {"name":"bob","display":"IBM Bob","skills_dir":{"home":".bob/skills"},"detect":[{"home":".bob"}]}
-{"name":"claude-code","display":"Claude Code","skills_dir":{"env_home":{"var":"CLAUDE_CONFIG_DIR","default":".claude","path":"skills"}},"detect":[{"env_home":{"var":"CLAUDE_CONFIG_DIR","default":".claude"}}]}
+{"name":"claude-code","display":"Claude Code","skills_dir":{"env_home":{"var":"CLAUDE_CONFIG_DIR","default":".claude","path":"skills"}},"detect":[{"env_home":{"var":"CLAUDE_CONFIG_DIR","default":".claude"}}],"link_without_root":true}
 {"name":"openclaw","display":"OpenClaw","skills_dir":{"home":".openclaw/skills"},"detect":[{"home":".openclaw"},{"home":".clawdbot"},{"home":".moltbot"}]}
 {"name":"cline","display":"Cline","skills_dir":{"home":".agents/skills"},"detect":[{"home":".cline"}]}
 {"name":"codearts-agent","display":"CodeArts Agent","skills_dir":{"home":".codeartsdoer/skills"},"detect":[{"home":".codeartsdoer"}]}

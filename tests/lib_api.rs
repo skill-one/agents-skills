@@ -25,7 +25,8 @@ fn manager_at(tmp: &tempfile::TempDir) -> (Manager, PathBuf) {
         .home(home.clone())
         .config(tmp.path().join("config"))
         .cwd(tmp.path().join("project"))
-        .build();
+        .build()
+        .unwrap();
     (manager, home)
 }
 
@@ -336,7 +337,8 @@ fn lib_agent_status_orders_canonical_first() {
         .cwd(tmp.path().join("project"))
         // Hermetic: never probe system locations (e.g. /Applications/ZCode.app).
         .probe_system_dirs(false)
-        .build();
+        .build()
+        .unwrap();
 
     manager
         .agent(&AgentRequest {

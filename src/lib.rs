@@ -15,7 +15,7 @@
 //!     .home("/tmp/home")
 //!     .config("/tmp/config")
 //!     .cwd("/tmp/project")
-//!     .build();
+//!     .build()?;
 //!
 //! // Install one skill — a local directory or the id `owner/repo/slug`
 //! // (see [`Manager::add`] for a local example). Then list what's installed.

@@ -211,7 +211,7 @@ fn select_skill(repo_root: &Path, skill_slug: &str) -> Result<Option<Skill>> {
     for (_, dir) in candidates {
         let path = repo_root.join(&dir);
         // Explicit selection also makes internal skills visible.
-        let Some(skill) = read_skill(&path, true) else {
+        let Some(skill) = read_skill(&path) else {
             continue;
         };
         if slugify(&skill.name) != requested {

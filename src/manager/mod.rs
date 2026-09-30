@@ -44,33 +44,33 @@ fn reported_names(skills: &[ScannedSkill]) -> Vec<String> {
 /// use agents_skills::{AddRequest, Manager};
 ///
 /// // Real environment:
-/// let real = Manager::new();
+/// let real = Manager::new()?;
 ///
 /// // Or a sandboxed environment (no side effects outside the given paths):
 /// let sandboxed = Manager::builder()
 ///     .home("/tmp/home")
 ///     .config("/tmp/config")
 ///     .cwd("/tmp/project")
-///     .build();
+///     .build()?;
 ///
 /// let req = AddRequest::new("anthropics/skills/pdf");
 /// let _ = (real, sandboxed, req);
+/// # Ok::<(), agents_skills::Error>(())
 /// ```
 pub struct Manager {
     env: Env,
-}
-
-impl Default for Manager {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl Manager {
     /// Build a manager from the real environment (home / config / cwd).
     ///
     /// Equivalent to [`Manager::builder`]`().build()`.
-    pub fn new() -> Self {
+    ///
+    /// # Errors
+    ///
+    /// [`SkillsError::Message`] when the platform cannot determine the home
+    /// directory.
+    pub fn new() -> Result<Self> {
         Self::builder().build()
     }
 
@@ -84,7 +84,8 @@ impl Manager {
     /// let manager = Manager::builder()
     ///     .home("/tmp/home")
     ///     .env_var("CLAUDE_CONFIG_DIR", "/tmp/claude")
-    ///     .build();
+    ///     .build()?;
+    /// # Ok::<(), agents_skills::Error>(())
     /// ```
     pub fn builder() -> ManagerBuilder {
         ManagerBuilder::default()
@@ -150,7 +151,7 @@ impl Manager {
     ///     .home(tmp.path().join("home"))
     ///     .config(tmp.path().join("config"))
     ///     .cwd(tmp.path().join("project"))
-    ///     .build();
+    ///     .build()?;
     ///
     /// let outcome = manager.add(&AddRequest::new(src.display().to_string()))?;
     /// assert_eq!(outcome.skill.name, "hello");
@@ -197,7 +198,7 @@ impl Manager {
                 // The slugified frontmatter `name` is the skill's identity; a
                 // manifest without a non-empty `name` is not a skill.
                 // A skill named by its explicit path may be internal.
-                let Some(s) = read_skill(path, true) else {
+                let Some(s) = read_skill(path) else {
                     return Err(SkillsError::msg(format!(
                         "Not a skill directory: \"{}\" — its SKILL.md must declare \
                          a non-empty `name` in the frontmatter.",
@@ -356,7 +357,7 @@ impl Manager {
     /// ```
     /// use agents_skills::Manager;
     ///
-    /// let manager = Manager::new();
+    /// let manager = Manager::new()?;
     /// let skills = manager.list()?;
     /// for skill in &skills {
     ///     println!("{} -> {}", skill.name, skill.path.display());
@@ -440,7 +441,7 @@ impl Manager {
     ///     .home(tmp.path().join("home"))
     ///     .config(tmp.path().join("config"))
     ///     .cwd(tmp.path().join("project"))
-    ///     .build();
+    ///     .build()?;
     ///
     /// let outcome = manager.disable(&DisableRequest {
     ///     skills: vec!["pdf".into()],
@@ -521,7 +522,7 @@ impl Manager {
     ///     .home(tmp.path().join("home"))
     ///     .config(tmp.path().join("config"))
     ///     .cwd(tmp.path().join("project"))
-    ///     .build();
+    ///     .build()?;
     ///
     /// let outcome = manager.enable(&EnableRequest {
     ///     skills: vec!["pdf".into()],
@@ -588,7 +589,7 @@ impl Manager {
     /// let manager = Manager::builder()
     ///     .home(tmp.path().join("home"))
     ///     .cwd(tmp.path().join("project"))
-    ///     .build();
+    ///     .build()?;
     ///
     /// let req = RemoveRequest {
     ///     skills: vec!["pdf".to_string()],
@@ -723,23 +724,39 @@ impl ManagerBuilder {
 
     /// Build the [`Manager`], resolving defaults from the real environment.
     ///
-    /// Unset fields fall back to the actual home/config/cwd of the process.
-    pub fn build(self) -> Manager {
+    /// Unset fields fall back to the actual home/config/cwd of the process;
+    /// the `INSTALL_INTERNAL_SKILLS` env var (or an override injected via
+    /// [`Self::env_var`]) toggles visibility of internal skills.
+    ///
+    /// # Errors
+    ///
+    /// [`SkillsError::Message`] when the platform cannot determine the home
+    /// directory.
+    pub fn build(self) -> Result<Manager> {
         let cwd = self
             .cwd
             .or_else(|| std::env::current_dir().ok())
             .unwrap_or_default();
         let mut env = Env::new(
-            self.home.unwrap_or_else(home),
-            self.config.unwrap_or_else(config_home),
+            match self.home {
+                Some(home) => home,
+                None => home()?,
+            },
+            match self.config {
+                Some(config) => config,
+                None => config_home()?,
+            },
             cwd,
         );
         if !self.vars.is_empty() {
             env.set_vars(self.vars);
         }
+        if let Some(v) = env.var("INSTALL_INTERNAL_SKILLS") {
+            env.set_install_internal_skills(v == "1" || v == "true");
+        }
         if let Some(probe) = self.probe_system_dirs {
             env.set_probe_system_dirs(probe);
         }
-        Manager { env }
+        Ok(Manager { env })
     }
 }

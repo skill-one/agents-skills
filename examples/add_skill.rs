@@ -14,7 +14,7 @@ fn main() -> agents_skills::Result<()> {
         .nth(1)
         .unwrap_or_else(|| "anthropics/skills/pdf".to_string());
 
-    let manager = Manager::new();
+    let manager = Manager::new()?;
     let outcome = manager.add(&AddRequest::new(source))?;
 
     if outcome.skipped {

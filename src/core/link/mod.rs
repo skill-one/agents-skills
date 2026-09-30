@@ -57,8 +57,9 @@ pub fn is_agent_linked(agent: &Agent, env: &Env) -> bool {
 ///
 /// Gating: an agent is skipped when the parent of its skills dir does not exist
 /// (e.g. `~/.claude` for Claude Code, `~/.gemini/config` for Antigravity) — this
-/// avoids fabricating agent presence. `claude-code` is the historical exception:
-/// it is linked even when its parent dir does not exist yet.
+/// avoids fabricating agent presence. The table-driven exception is
+/// `link_without_root` (e.g. `claude-code`): such agents are linked even when
+/// their root dir does not exist yet.
 ///
 /// Content handling: an empty dir is replaced by the link directly; a non-empty
 /// dir is adopted whole before linking — skill dirs move into the canonical dir,
@@ -77,7 +78,7 @@ pub fn link_agent(agent: &Agent, env: &Env) -> LinkOutcome {
         return LinkOutcome::Skipped;
     };
 
-    if !agent_root_exists(&agent_dir) && agent.name != "claude-code" {
+    if !agent_root_exists(&agent_dir) && !agent.link_without_root {
         return LinkOutcome::Skipped;
     }
 

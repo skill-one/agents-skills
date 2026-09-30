@@ -339,19 +339,20 @@ pub fn dir_created_secs(dir: &Path) -> Option<u64> {
 
 /// Scan the canonical dir, listing installed skills.
 pub fn list_installed_skills(env: &Env) -> Vec<InstalledSkill> {
-    list_skills_in(&canonical_skills_dir(env))
+    list_skills_in(&canonical_skills_dir(env), env)
 }
 
 /// List skills parked in the disabled dir.
 pub fn list_disabled_skills(env: &Env) -> Vec<InstalledSkill> {
-    list_skills_in(&disabled_skills_dir(env))
+    list_skills_in(&disabled_skills_dir(env), env)
 }
 
 /// Read every skill directory in `dir`.
 ///
 /// Dot-entries are skipped: staging leftovers (`.incoming-*`) and the `.misc`
 /// quarantine dir live in the same tree but are never skills.
-fn list_skills_in(dir: &Path) -> Vec<InstalledSkill> {
+/// Internal skills stay hidden unless the environment opts in.
+fn list_skills_in(dir: &Path, env: &Env) -> Vec<InstalledSkill> {
     let mut out: Vec<InstalledSkill> = Vec::new();
 
     let entries = match fs::read_dir(dir) {
@@ -367,10 +368,12 @@ fn list_skills_in(dir: &Path) -> Vec<InstalledSkill> {
         // A directory is only a skill when its SKILL.md declares a non-empty
         // `name`; everything else is invisible here. The identity is the
         // slugified name; the raw name rides along for display.
-        // Internal skills stay hidden unless opted in.
-        let Some(skill) = read_skill(&skill_dir, false) else {
+        let Some(skill) = read_skill(&skill_dir) else {
             continue;
         };
+        if skill.internal && !env.install_internal_skills() {
+            continue;
+        }
         let description = one_line(&skill.description);
         let installed_at = dir_created_secs(&skill_dir);
         out.push(InstalledSkill {
@@ -422,7 +425,7 @@ fn scan_skills_in(dir: &Path) -> Vec<ScannedSkill> {
             if !entry.path().is_dir() {
                 continue;
             }
-            let Some(skill) = read_skill(&entry.path(), true) else {
+            let Some(skill) = read_skill(&entry.path()) else {
                 continue;
             };
             let dir_name = entry.file_name().to_string_lossy().into_owned();
