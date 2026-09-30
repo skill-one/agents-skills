@@ -8,10 +8,7 @@ use std::path::PathBuf;
 use crate::core::agents::{AGENTS, Env, config_home, home, is_installed, is_native};
 use crate::core::discover::{Skill, read_skill};
 use crate::core::github::fetch_skill;
-use crate::core::install::{
-    ScannedSkill, install_skill, list_disabled_skills, list_installed_skills, scan_disabled,
-    scan_installed,
-};
+use crate::core::install::{ScannedSkill, install_skill, scan_disabled, scan_installed};
 use crate::core::link::{is_agent_linked, link_agent, private_content, unlink_agent};
 use crate::core::source::{SourceType, parse_source};
 use crate::error::{Result, SkillsError};
@@ -221,12 +218,7 @@ impl Manager {
 
         // Install into the canonical dir (the only place real files live).
         // An already-installed name (enabled or disabled) is skipped, not replaced.
-        let result = install_skill(&skill, &self.env);
-        if !result.success {
-            return Err(SkillsError::msg(
-                result.error.unwrap_or_else(|| "install failed".to_string()),
-            ));
-        }
+        let result = install_skill(&skill, &self.env)?;
 
         Ok(AddOutcome {
             source: parsed,
@@ -364,28 +356,24 @@ impl Manager {
     /// # Ok::<(), agents_skills::Error>(())
     /// ```
     pub fn list(&self) -> Result<Vec<ListedSkill>> {
-        let installed = list_installed_skills(&self.env);
-        let disabled = list_disabled_skills(&self.env);
-
         let mut out = Vec::new();
-        for s in installed {
+        for (skill, enabled) in scan_installed(&self.env)
+            .into_iter()
+            .map(|s| (s, true))
+            .chain(scan_disabled(&self.env).into_iter().map(|s| (s, false)))
+        {
+            // Internal skills stay hidden from `list` unless opted in;
+            // selection (remove/disable/enable) still reaches them.
+            if skill.internal && !self.env.install_internal_skills() {
+                continue;
+            }
             out.push(ListedSkill {
-                name: s.name,
-                display_name: s.display_name,
-                description: s.description,
-                path: s.path,
-                enabled: true,
-                installed_at: s.installed_at,
-            });
-        }
-        for s in disabled {
-            out.push(ListedSkill {
-                name: s.name,
-                display_name: s.display_name,
-                description: s.description,
-                path: s.path,
-                enabled: false,
-                installed_at: s.installed_at,
+                name: skill.name,
+                display_name: skill.display_name,
+                description: skill.description,
+                path: skill.path,
+                enabled,
+                installed_at: skill.installed_at,
             });
         }
         out.sort_by(|a, b| a.name.cmp(&b.name));

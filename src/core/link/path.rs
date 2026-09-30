@@ -7,7 +7,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::core::path_util::normalize_lexical;
+use crate::core::path_util::{path_contains, same_path};
 
 pub(crate) fn entry_name(entry: &fs::DirEntry) -> String {
     entry.file_name().to_string_lossy().into_owned()
@@ -34,13 +34,6 @@ pub(crate) fn points_to(link: &Path, target: &Path) -> bool {
     }
 }
 
-fn same_path(a: &Path, b: &Path) -> bool {
-    match (a.canonicalize(), b.canonicalize()) {
-        (Ok(x), Ok(y)) => x == y,
-        _ => normalize_lexical(a) == normalize_lexical(b),
-    }
-}
-
 /// Whether a dir entry is an old-model per-skill symlink into the canonical dir.
 ///
 /// Such entries are dropped on link instead of being moved: their content already
@@ -60,13 +53,7 @@ pub(crate) fn is_legacy_link(entry: &fs::DirEntry, canonical: &Path) -> bool {
             } else {
                 path.parent().unwrap_or(Path::new(".")).join(raw)
             };
-            let canon = canonical
-                .canonicalize()
-                .unwrap_or_else(|_| normalize_lexical(canonical));
-            let res = resolved
-                .canonicalize()
-                .unwrap_or_else(|_| normalize_lexical(&resolved));
-            res == canon || res.starts_with(&canon)
+            path_contains(canonical, &resolved)
         }
         Err(_) => false,
     }

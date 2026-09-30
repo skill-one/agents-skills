@@ -46,7 +46,9 @@ pub(crate) enum SelectionOp {
 /// Whether `skill` and the requested `name` denote the same skill: matched
 /// case-insensitively on the reported name (the SKILL.md frontmatter `name`),
 /// folded with [`sanitize_name`] so an adopted skill's original spelling
-/// (`PDF Master`) still matches its normalized identity (`pdf-master`).
+/// (`PDF Master`) still matches its normalized identity (`pdf-master`). A
+/// frontmatter name containing `/` is addressed by its folded form: slugify
+/// drops `/` when building the slug, while the fold maps it to `-`.
 fn same_skill(skill: &ScannedSkill, name: &str) -> bool {
     sanitize_name(&skill.name) == sanitize_name(name)
 }

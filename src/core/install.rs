@@ -1,7 +1,7 @@
-//! Install skills into the canonical dir and list what's installed.
+//! Install skills into the canonical dir and scan what's installed.
 //!
-//! The canonical dir (`(global ? home : cwd)/.agents/skills`) is the single source of
-//! truth: [`install_skill`] writes real files there and nowhere else. Agent
+//! The canonical dir (`~/.agents/skills`) is the single source of truth:
+//! [`install_skill`] writes real files there and nowhere else. Agent
 //! integration is a separate concern handled by [`crate::core::link`]. Copies skip
 //! metadata.json/.git/__pycache__/__pypackages__.
 
@@ -10,19 +10,17 @@ use std::path::{Path, PathBuf};
 
 use crate::core::agents::{Env, canonical_skills_dir, disabled_skills_dir};
 use crate::core::discover::{Skill, read_skill};
-use crate::error::Result;
+use crate::core::path_util::path_contains;
+use crate::error::{Result, SkillsError};
 
 /// Outcome of installing a single skill into the canonical dir.
 #[derive(Debug)]
-pub struct InstallResult {
-    /// Whether the install succeeded.
-    pub success: bool,
+pub struct InstallOutcome {
     /// Canonical directory of the skill.
     pub canonical_path: PathBuf,
-    /// Whether the install was skipped (source already inside the canonical dir).
+    /// Whether the install was skipped (a skill of the same identity is
+    /// already installed, or the source already lives inside the canonical dir).
     pub skipped: bool,
-    /// Error message on failure.
-    pub error: Option<String>,
 }
 
 /// Characters that can never appear in a slot name, whatever the filesystem: `/` and
@@ -135,36 +133,8 @@ fn holds_skill(dir: &Path, name: &str) -> bool {
         || !same_skill_entries(dir, name).is_empty()
 }
 
-/// Canonicalize as much of `p` as exists: the deepest existing ancestor is
-/// canonicalized and the not-yet-created tail appended. Unlike
-/// `Path::canonicalize`, this also succeeds for paths that do not exist yet,
-/// so an existing base and a to-be-created target resolve against the same
-/// symlink-resolved root instead of comparing absolute vs raw paths.
-fn canonicalize_lenient(p: &Path) -> PathBuf {
-    let mut tail = PathBuf::new();
-    let mut cur = p.to_path_buf();
-    loop {
-        if let Ok(resolved) = cur.canonicalize() {
-            return resolved.join(&tail);
-        }
-        match (cur.parent(), cur.file_name()) {
-            (Some(parent), Some(name)) => {
-                tail = PathBuf::from(name).join(&tail);
-                cur = parent.to_path_buf();
-            }
-            _ => return p.to_path_buf(),
-        }
-    }
-}
-
-fn path_safe(base: &Path, target: &Path) -> bool {
-    let base_abs = canonicalize_lenient(base);
-    let target_abs = canonicalize_lenient(target);
-    target_abs == base_abs || target_abs.starts_with(&base_abs)
-}
-
 fn paths_overlap(a: &Path, b: &Path) -> bool {
-    path_safe(a, b) || path_safe(b, a)
+    path_contains(a, b) || path_contains(b, a)
 }
 
 /// Recursively copy a directory, excluding metadata.json / .git / __pycache__ / __pypackages__,
@@ -201,39 +171,38 @@ pub fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
 /// `name`. An already-installed skill — enabled or disabled — is **skipped**,
 /// never overwritten: `add` only ever adds. Update an installed skill with
 /// `remove` + `add`.
-pub fn install_skill(skill: &Skill, env: &Env) -> InstallResult {
+///
+/// # Errors
+///
+/// [`SkillsError`] when the install slot name cannot be derived, exceeds the
+/// filesystem's 255-byte name limit, or the copy into the canonical dir fails.
+pub fn install_skill(skill: &Skill, env: &Env) -> Result<InstallOutcome> {
     let slug = slugify(&skill.name);
     let canonical_base = canonical_skills_dir(env);
-    let Some(slot) = skill.dir.file_name().and_then(|n| n.to_str()) else {
-        return InstallResult {
-            success: false,
-            canonical_path: skill.dir.clone(),
-            skipped: false,
-            error: Some(format!(
+    let slot = skill
+        .dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| {
+            SkillsError::msg(format!(
                 "Cannot determine an install directory name from \"{}\".",
                 skill.dir.display()
-            )),
-        };
-    };
-    let canonical_dir = canonical_base.join(slot);
-
-    if !path_safe(&canonical_base, &canonical_dir) {
-        return InstallResult {
-            success: false,
-            canonical_path: canonical_dir,
-            skipped: false,
-            error: Some("Invalid skill name: potential path traversal detected".to_string()),
-        };
+            ))
+        })?;
+    if slot.len() > MAX_SLOT_BYTES {
+        return Err(SkillsError::msg(format!(
+            "Install directory name \"{slot}\" exceeds the {MAX_SLOT_BYTES}-byte \
+             filesystem limit; rename the source directory."
+        )));
     }
+    let canonical_dir = canonical_base.join(slot);
 
     // Source already inside the canonical dir → skip (avoid deleting the source).
     if paths_overlap(&skill.dir, &canonical_dir) {
-        return InstallResult {
-            success: true,
+        return Ok(InstallOutcome {
             canonical_path: canonical_dir,
             skipped: true,
-            error: None,
-        };
+        });
     }
 
     // Already installed, enabled or disabled → skip. Installing anyway would
@@ -243,12 +212,10 @@ pub fn install_skill(skill: &Skill, env: &Env) -> InstallResult {
     // (e.g. `PDF Master` for `pdf-master`) counts as installed too.
     let disabled_base = disabled_skills_dir(env);
     if holds_skill(&canonical_base, &slug) || holds_skill(&disabled_base, &slug) {
-        return InstallResult {
-            success: true,
+        return Ok(InstallOutcome {
             canonical_path: canonical_dir,
             skipped: true,
-            error: None,
-        };
+        });
     }
 
     // Copy into a staging dir next to the destination (same filesystem), then
@@ -264,20 +231,13 @@ pub fn install_skill(skill: &Skill, env: &Env) -> InstallResult {
 
     if let Err(e) = install {
         remove_path(&staging);
-        return InstallResult {
-            success: false,
-            canonical_path: canonical_dir,
-            skipped: false,
-            error: Some(e.to_string()),
-        };
+        return Err(e);
     }
 
-    InstallResult {
-        success: true,
+    Ok(InstallOutcome {
         canonical_path: canonical_dir,
         skipped: false,
-        error: None,
-    }
+    })
 }
 
 /// Unique suffix for the staging directory name (pid + nanos).
@@ -299,27 +259,69 @@ fn remove_path(p: &Path) {
     }
 }
 
-/// An installed skill (used by list).
-#[derive(Debug)]
-pub struct InstalledSkill {
-    /// Skill slug — the slugified frontmatter `name`, the identity every
-    /// command (`remove`/`enable`/`disable`) selects by. Only valid skills
-    /// are listed.
+/// A scanned skill directory: what the skill reports plus the slot it lives in.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ScannedSkill {
+    /// Reported name — the slugified frontmatter `name`, the identity
+    /// `remove`/`enable`/`disable` select by.
     pub name: String,
     /// The frontmatter `name` as declared — a display-only rendition of the
     /// same skill (it may contain spaces and mixed case the slug folds away).
     pub display_name: String,
     /// Skill description, collapsed onto a single line.
     pub description: String,
+    /// Whether the skill declares `metadata.internal` (the scanners report
+    /// it; visibility filtering is the caller's concern).
+    pub internal: bool,
     /// The skill's real on-disk directory (canonical or disabled dir).
     pub path: PathBuf,
     /// The skill directory's creation time as Unix seconds, when the platform
-    /// and filesystem record one.
-    ///
-    /// Approximate "when it landed on disk": exact for `add` installs, but a
-    /// skill adopted from an agent dir keeps that dir's original time, and
-    /// several Linux filesystems report no creation time at all.
+    /// and filesystem record one. Approximate "when it landed on disk".
     pub installed_at: Option<u64>,
+    /// On-disk directory name — the slot [`move_skill`] / [`remove_skill`]
+    /// operate on.
+    pub dir_name: String,
+}
+
+/// Scan every skill directory in `dir`, enabled or disabled.
+///
+/// Dot-entries are skipped: staging leftovers (`.incoming-*`) and the `.misc`
+/// quarantine dir live in the same tree but are never skills. A directory is
+/// only a skill when its SKILL.md declares a non-empty `name`; internal
+/// skills are reported with their flag set — [`Manager::list`][list] filters
+/// them, selection never does.
+///
+/// [list]: crate::manager::Manager::list
+fn scan_skills_in(dir: &Path) -> Vec<ScannedSkill> {
+    let mut out: Vec<ScannedSkill> = Vec::new();
+
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return out,
+    };
+
+    for entry in entries.flatten() {
+        if entry.file_name().to_string_lossy().starts_with('.') {
+            continue;
+        }
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let Some(skill) = read_skill(&entry.path()) else {
+            continue;
+        };
+        out.push(ScannedSkill {
+            name: slugify(&skill.name),
+            display_name: skill.name,
+            description: one_line(&skill.description),
+            internal: skill.internal,
+            path: entry.path(),
+            installed_at: dir_created_secs(&entry.path()),
+            dir_name: entry.file_name().to_string_lossy().into_owned(),
+        });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
 }
 
 /// Collapse whitespace so a frontmatter block scalar reads as one line.
@@ -337,57 +339,6 @@ pub fn dir_created_secs(dir: &Path) -> Option<u64> {
         .map(|d| d.as_secs())
 }
 
-/// Scan the canonical dir, listing installed skills.
-pub fn list_installed_skills(env: &Env) -> Vec<InstalledSkill> {
-    list_skills_in(&canonical_skills_dir(env), env)
-}
-
-/// List skills parked in the disabled dir.
-pub fn list_disabled_skills(env: &Env) -> Vec<InstalledSkill> {
-    list_skills_in(&disabled_skills_dir(env), env)
-}
-
-/// Read every skill directory in `dir`.
-///
-/// Dot-entries are skipped: staging leftovers (`.incoming-*`) and the `.misc`
-/// quarantine dir live in the same tree but are never skills.
-/// Internal skills stay hidden unless the environment opts in.
-fn list_skills_in(dir: &Path, env: &Env) -> Vec<InstalledSkill> {
-    let mut out: Vec<InstalledSkill> = Vec::new();
-
-    let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return out,
-    };
-
-    for entry in entries.flatten() {
-        if entry.file_name().to_string_lossy().starts_with('.') {
-            continue;
-        }
-        let skill_dir = entry.path();
-        // A directory is only a skill when its SKILL.md declares a non-empty
-        // `name`; everything else is invisible here. The identity is the
-        // slugified name; the raw name rides along for display.
-        let Some(skill) = read_skill(&skill_dir) else {
-            continue;
-        };
-        if skill.internal && !env.install_internal_skills() {
-            continue;
-        }
-        let description = one_line(&skill.description);
-        let installed_at = dir_created_secs(&skill_dir);
-        out.push(InstalledSkill {
-            name: slugify(&skill.name),
-            display_name: skill.name,
-            description,
-            path: skill_dir,
-            installed_at,
-        });
-    }
-    out.sort_by(|a, b| a.name.cmp(&b.name));
-    out
-}
-
 /// Scan the canonical dir, collecting installed skills by reported name.
 pub fn scan_installed(env: &Env) -> Vec<ScannedSkill> {
     scan_skills_in(&canonical_skills_dir(env))
@@ -396,47 +347,6 @@ pub fn scan_installed(env: &Env) -> Vec<ScannedSkill> {
 /// Scan the disabled dir, collecting disabled skills by reported name.
 pub fn scan_disabled(env: &Env) -> Vec<ScannedSkill> {
     scan_skills_in(&disabled_skills_dir(env))
-}
-
-/// A scanned skill directory: the slug it reports and the slot it lives in.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ScannedSkill {
-    /// Reported name — the slugified frontmatter `name`, the identity
-    /// `remove`/`enable`/`disable` select by.
-    pub name: String,
-    /// On-disk directory name — the slot [`move_skill`] / [`remove_skill`]
-    /// operate on.
-    pub dir_name: String,
-}
-
-/// Collect the skill directories of `dir`, skipping dot-entries (staging
-/// leftovers like `.incoming-*` and the `.misc` quarantine dir are never
-/// skills). Only valid skills count — a directory whose SKILL.md does not
-/// declare a non-empty `name` is invisible here, too.
-/// Internal skills stay selectable: `remove`/`disable`/`enable` must reach
-/// what `list` hides.
-fn scan_skills_in(dir: &Path) -> Vec<ScannedSkill> {
-    let mut v: Vec<ScannedSkill> = Vec::new();
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            if entry.file_name().to_string_lossy().starts_with('.') {
-                continue;
-            }
-            if !entry.path().is_dir() {
-                continue;
-            }
-            let Some(skill) = read_skill(&entry.path()) else {
-                continue;
-            };
-            let dir_name = entry.file_name().to_string_lossy().into_owned();
-            v.push(ScannedSkill {
-                name: slugify(&skill.name),
-                dir_name,
-            });
-        }
-    }
-    v.sort_by(|a, b| a.name.cmp(&b.name));
-    v
 }
 
 /// Move a skill directory between the canonical dir and the disabled dir.
@@ -567,21 +477,21 @@ mod tests {
         // Existing target: both sides canonicalize directly.
         let existing = base.join("alpha");
         std::fs::create_dir_all(&existing).unwrap();
-        assert!(path_safe(&base, &existing));
+        assert!(path_contains(&base, &existing));
 
         // Not-yet-created target under an existing base: the base canonicalizes
         // to an absolute path while the target cannot — the naive fallback made
         // this comparison fail (absolute vs raw) and reject a valid name.
-        assert!(path_safe(&base, &base.join("beta")));
+        assert!(path_contains(&base, &base.join("beta")));
 
         // Fully not-yet-created base and target still resolve to one root.
-        assert!(path_safe(
+        assert!(path_contains(
             &tmp.path().join("a/b"),
             &tmp.path().join("a/b/c")
         ));
 
         // Traversal outside the base is still rejected.
-        assert!(!path_safe(&base, &tmp.path().join("elsewhere")));
+        assert!(!path_contains(&base, &tmp.path().join("elsewhere")));
     }
 
     #[test]
@@ -591,8 +501,7 @@ mod tests {
         let src = tmp.path().join("pdf");
         let skill = write_skill(&src, "pdf");
 
-        let r = install_skill(&skill, &env);
-        assert!(r.success, "err={:?}", r.error);
+        let r = install_skill(&skill, &env).unwrap();
         assert!(!r.skipped);
         assert!(tmp.path().join(".agents/skills/pdf/SKILL.md").exists());
         // No agent dirs are created by install.
@@ -607,8 +516,7 @@ mod tests {
         let src = tmp.path().join(".agents/skills/pdf");
         let skill = write_skill(&src, "pdf");
 
-        let r = install_skill(&skill, &env);
-        assert!(r.success);
+        let r = install_skill(&skill, &env).unwrap();
         assert!(r.skipped);
         assert!(src.join("SKILL.md").exists());
     }
@@ -621,12 +529,11 @@ mod tests {
         let src = tmp.path().join("pdf");
         let skill = write_skill(&src, "pdf");
 
-        assert!(install_skill(&skill, &env).success);
+        assert!(install_skill(&skill, &env).is_ok());
 
         // A second install with changed content is skipped, leaving v1 intact.
         fs::write(src.join("SKILL.md"), "v2").unwrap();
-        let r = install_skill(&write_skill(&src, "pdf"), &env);
-        assert!(r.success);
+        let r = install_skill(&write_skill(&src, "pdf"), &env).unwrap();
         assert!(r.skipped);
         assert_eq!(
             fs::read_to_string(canonical_base.join("pdf/SKILL.md")).unwrap(),
@@ -652,11 +559,10 @@ mod tests {
         let src = tmp.path().join("pdf");
         let skill = write_skill(&src, "pdf");
 
-        assert!(install_skill(&skill, &env).success);
+        assert!(install_skill(&skill, &env).is_ok());
         move_skill("pdf", false, &env).unwrap();
 
-        let r = install_skill(&skill, &env);
-        assert!(r.success);
+        let r = install_skill(&skill, &env).unwrap();
         assert!(r.skipped);
         assert!(!tmp.path().join(".agents/skills/pdf").exists());
         assert!(
@@ -682,8 +588,10 @@ mod tests {
         fs::write(&bad, "x").unwrap();
         fs::set_permissions(&bad, fs::Permissions::from_mode(0o000)).unwrap();
 
-        let r = install_skill(&skill, &env);
-        assert!(!r.success, "copy should have failed");
+        assert!(
+            install_skill(&skill, &env).is_err(),
+            "copy should have failed"
+        );
 
         // Nothing is left behind: neither the skill dir nor a staging dir.
         assert!(!canonical_base.join("pdf").exists());
@@ -796,9 +704,8 @@ mod tests {
         fs::write(parked.join("SKILL.md"), "parked").unwrap();
 
         let src = tmp.path().join("PDF Master");
-        let r = install_skill(&write_skill(&src, "PDF Master"), &env);
+        let r = install_skill(&write_skill(&src, "PDF Master"), &env).unwrap();
 
-        assert!(r.success);
         assert!(r.skipped);
         assert!(!tmp.path().join(".agents/skills/pdf-master").exists());
     }
@@ -812,9 +719,8 @@ mod tests {
         let first = write_skill(&tmp.path().join("中文技能"), "中文技能");
         let second = write_skill(&tmp.path().join("另一技能"), "另一技能");
 
-        assert!(install_skill(&first, &env).success);
-        let r = install_skill(&second, &env);
-        assert!(r.success, "err={:?}", r.error);
+        install_skill(&first, &env).unwrap();
+        let r = install_skill(&second, &env).unwrap();
         assert!(!r.skipped, "the second Chinese-named skill must install");
 
         let base = tmp.path().join(".agents/skills");
@@ -860,24 +766,24 @@ mod tests {
     }
 
     #[test]
-    fn list_installed_skills_finds_canonical() {
+    fn scan_installed_finds_canonical() {
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
         let src = tmp.path().join("pdf");
         let skill = write_skill(&src, "pdf");
-        install_skill(&skill, &env);
+        install_skill(&skill, &env).unwrap();
 
-        let installed = list_installed_skills(&env);
+        let installed = scan_installed(&env);
         assert_eq!(installed.len(), 1);
         assert_eq!(installed[0].name, "pdf");
         assert_eq!(installed[0].path, tmp.path().join(".agents/skills/pdf"));
     }
 
     #[test]
-    fn list_reports_the_frontmatter_name_and_the_real_path() {
+    fn scan_reports_the_frontmatter_name_and_the_real_path() {
         // An adopted skill keeps its original directory name, which can differ
-        // from the frontmatter `name`: list reports the frontmatter name (the
-        // name the user specified at install time) and the real directory.
+        // from the frontmatter `name`: the scan reports the slugified name and
+        // carries the real directory plus the raw name for display.
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
         let dir = tmp.path().join(".agents/skills/PDF Master");
@@ -888,38 +794,21 @@ mod tests {
         )
         .unwrap();
 
-        let installed = list_installed_skills(&env);
+        let installed = scan_installed(&env);
         assert_eq!(installed.len(), 1);
         assert_eq!(installed[0].name, "pdf-master");
+        assert_eq!(installed[0].dir_name, "PDF Master");
         assert_eq!(installed[0].path, dir);
 
         // A manifest without a non-empty `name` is not a skill: the directory
-        // is never listed.
+        // is never scanned.
         let dir = tmp.path().join(".agents/skills/acrobat");
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("SKILL.md"), "---\ndescription: d\n---\nbody").unwrap();
         fs::create_dir_all(tmp.path().join(".agents/skills/empty")).unwrap();
-        let installed = list_installed_skills(&env);
+        let installed = scan_installed(&env);
         assert_eq!(installed.len(), 1);
         assert_eq!(installed[0].name, "pdf-master");
-    }
-
-    #[test]
-    fn scan_installed_lists_canonical_only() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let env = env_at(&tmp);
-        let src = tmp.path().join("pdf");
-        let skill = write_skill(&src, "pdf");
-        install_skill(&skill, &env);
-
-        let skills = scan_installed(&env);
-        assert_eq!(
-            skills,
-            vec![ScannedSkill {
-                name: "pdf".to_string(),
-                dir_name: "pdf".to_string()
-            }]
-        );
     }
 
     #[test]
@@ -939,13 +828,9 @@ mod tests {
                 .exists()
         );
         assert!(scan_installed(&env).is_empty());
-        assert_eq!(
-            scan_disabled(&env),
-            vec![ScannedSkill {
-                name: "pdf".to_string(),
-                dir_name: "pdf".to_string()
-            }]
-        );
+        let disabled = scan_disabled(&env);
+        assert_eq!(disabled.len(), 1);
+        assert_eq!(disabled[0].name, "pdf");
 
         // Enable: moves back.
         move_skill("pdf", true, &env).unwrap();
@@ -954,15 +839,15 @@ mod tests {
     }
 
     #[test]
-    fn list_disabled_skills_reports_hidden_skills() {
+    fn scan_disabled_reports_hidden_skills() {
         let tmp = tempfile::TempDir::new().unwrap();
         let env = env_at(&tmp);
         let src = tmp.path().join("pdf");
         let skill = write_skill(&src, "pdf");
-        install_skill(&skill, &env);
+        install_skill(&skill, &env).unwrap();
         move_skill("pdf", false, &env).unwrap();
 
-        let disabled = list_disabled_skills(&env);
+        let disabled = scan_disabled(&env);
         assert_eq!(disabled.len(), 1);
         assert_eq!(disabled[0].name, "pdf");
     }

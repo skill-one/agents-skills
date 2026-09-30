@@ -4,9 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::core::agents::get_agent;
-use crate::core::install::{
-    install_skill, list_installed_skills, move_skill, sanitize_name, scan_installed,
-};
+use crate::core::install::{install_skill, move_skill, sanitize_name, scan_installed};
 use crate::core::link::outcome::LinkOutcome;
 use crate::core::link::{is_agent_linked, link_agent, private_content, unlink_agent};
 use crate::core::test_utils::{env_at, skill_frontmatter, write_and_parse_skill};
@@ -206,11 +204,6 @@ fn link_agent_quarantines_non_skill_entries() {
         .map(|s| s.name.clone())
         .collect();
     assert_eq!(scanned, vec!["my-skill".to_string()]);
-    let listed: Vec<String> = list_installed_skills(&env)
-        .into_iter()
-        .map(|s| s.name)
-        .collect();
-    assert_eq!(listed, vec!["my-skill".to_string()]);
 }
 
 #[test]

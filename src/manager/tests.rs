@@ -1,6 +1,8 @@
 //! Unit tests for the manager's selection helpers.
 
-use crate::core::install::ScannedSkill;
+use std::path::PathBuf;
+
+use crate::core::install::{ScannedSkill, scan_installed};
 use crate::core::test_utils::env_at;
 use crate::error::SkillsError;
 use crate::manager::select::{SelectionOp, apply_selection, resolve_target_agents};
@@ -8,6 +10,11 @@ use crate::manager::select::{SelectionOp, apply_selection, resolve_target_agents
 fn scanned(name: &str) -> ScannedSkill {
     ScannedSkill {
         name: name.to_string(),
+        display_name: name.to_string(),
+        description: String::new(),
+        internal: false,
+        path: PathBuf::from(name),
+        installed_at: None,
         dir_name: name.to_string(),
     }
 }
@@ -28,8 +35,8 @@ fn selection_matches_on_reported_names_across_sources() {
     }
     let installed = vec![scanned("pdf"), scanned("PDF Master")];
     let disabled = vec![ScannedSkill {
-        name: "legacy-skill".to_string(),
         dir_name: "Legacy Skill".to_string(),
+        ..scanned("legacy-skill")
     }];
     let requested = vec![
         "pdf".to_string(),
@@ -69,6 +76,34 @@ fn selection_classifies_already_and_missing() {
     assert!(applied.is_empty());
     assert_eq!(already, vec!["old".to_string()]);
     assert_eq!(missing, vec!["ghost".to_string()]);
+}
+
+#[test]
+fn selection_folds_request_names() {
+    // A requested name folds the same way as the reported slug: a skill
+    // adopted under its unnormalized spelling ("PDF Master") is selected by
+    // its normalized identity ("pdf-master") and vice versa.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let env = env_at(&tmp);
+    let dir = tmp.path().join(".agents/skills/PDF Master");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("SKILL.md"),
+        "---\nname: pdf-master\ndescription: d\n---\nbody",
+    )
+    .unwrap();
+
+    let installed = scan_installed(&env);
+    let (applied, already, missing) = apply_selection(
+        SelectionOp::Disable,
+        &["PDF Master".to_string()],
+        &[&installed],
+        &[],
+        &env,
+    )
+    .unwrap();
+    assert_eq!(applied, vec!["pdf-master".to_string()]);
+    assert!(already.is_empty() && missing.is_empty());
 }
 
 #[test]
