@@ -318,7 +318,7 @@ fn link_agent_drops_conflicts_with_disabled_skills() {
     let env = env_at(&tmp);
     let src = tmp.path().join("pdf");
     let skill = write_and_parse_skill(&src, "pdf");
-    install_skill(&skill, &env);
+    install_skill(&skill, &env).unwrap();
     move_skill("pdf", false, &env).unwrap();
     // The agent holds its own copy of the disabled skill plus a fresh one.
     let existing = tmp.path().join(".claude/skills/pdf");
@@ -357,7 +357,7 @@ fn link_agent_drops_legacy_per_skill_links() {
     let env = env_at(&tmp);
     let src = tmp.path().join("pdf");
     let skill = write_and_parse_skill(&src, "pdf");
-    install_skill(&skill, &env);
+    install_skill(&skill, &env).unwrap();
     fs::create_dir_all(tmp.path().join(".cursor/skills")).unwrap();
     std::os::unix::fs::symlink(
         tmp.path().join(".agents/skills/pdf"),

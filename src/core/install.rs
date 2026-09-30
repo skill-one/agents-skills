@@ -817,7 +817,7 @@ mod tests {
         let env = env_at(&tmp);
         let src = tmp.path().join("pdf");
         let skill = write_skill(&src, "pdf");
-        install_skill(&skill, &env);
+        install_skill(&skill, &env).unwrap();
 
         // Disable: moves out of canonical, into disabled-skills.
         move_skill("pdf", false, &env).unwrap();
