@@ -29,6 +29,9 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
   `scripts/sync-agents.sh` local overrides) instead of a name check in the
   link code.
 
+- `remove`/`disable`/`enable` exit 1 when a requested name matched nothing
+  ("not found") — previously they silently succeeded with exit 0.
+
 ### Fixed
 
 - CLI errors go to stderr (they were printed to stdout while the

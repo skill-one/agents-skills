@@ -98,6 +98,11 @@ pub fn run(manager: &Manager, args: SelectionArgs, action: Action) -> Result<()>
         Err(e) => return fail_agents(e),
     };
     render(&req, &outcome, action.verb());
+    // Requested names that matched nothing are a failure for scripts, even
+    // though the rest of the request may have applied.
+    if !outcome.missing.is_empty() {
+        std::process::exit(1);
+    }
     Ok(())
 }
 

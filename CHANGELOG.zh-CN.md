@@ -25,6 +25,9 @@
   `link_without_root` 字段，由 `scripts/sync-agents.sh` 的本地 overrides 合并），
   不再是链接代码中的名字判断。
 
+- `remove`/`disable`/`enable` 在有请求名称未匹配到任何技能（"not found"）时
+  退出码为 1——此前静默成功退出 0。
+
 ### 修复
 
 - CLI 错误输出到 stderr（此前打印到 stdout，而顶层处理器用的是 stderr）。

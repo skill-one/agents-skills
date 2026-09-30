@@ -77,7 +77,8 @@ fn disable_missing_skill_reports_not_found() {
     p.skills()
         .args(["disable", "nope"])
         .assert()
-        .success()
+        .failure()
+        .code(1)
         .stdout(predicate::str::contains("not found"));
 }
 

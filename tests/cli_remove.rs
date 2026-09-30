@@ -73,7 +73,8 @@ fn remove_nonexistent_prints_no_match() {
     p.skills()
         .args(["remove", "ghost"])
         .assert()
-        .success()
+        .failure()
+        .code(1)
         .stdout(predicate::str::contains("not found"));
 }
 
