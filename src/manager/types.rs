@@ -41,7 +41,7 @@ impl AddRequest {
     /// let req = AddRequest::new("anthropics/skills/pdf");
     /// assert_eq!(req.source, "anthropics/skills/pdf");
     /// assert!(req.reference.is_none()); // default branch
-    /// # let _ = Manager::new();
+    /// # let _ = Manager::new().ok();
     /// ```
     pub fn new(source: impl Into<String>) -> Self {
         AddRequest {
@@ -51,15 +51,17 @@ impl AddRequest {
     }
 }
 
-/// Request for [`Manager::remove`].
+/// Request for [`Manager::remove`], [`Manager::disable`] and [`Manager::enable`]
+/// — the three commands that select installed skills by name.
 ///
-/// `Default` is a no-op that only reports installed names — set `skills` or `all` to
-/// actually remove anything.
+/// `Default` is a no-op that only reports the currently selectable names — set
+/// `skills` or `all` to actually apply anything.
 #[derive(Debug, Clone, Default)]
-pub struct RemoveRequest {
-    /// Skill names to remove (the CLI merges positional args and `--skill` here).
+pub struct SelectionRequest {
+    /// Skill names to select (the CLI merges positional args and `--skill` here).
     pub skills: Vec<String>,
-    /// Remove all installed skills.
+    /// Select every currently available skill (all installed for
+    /// remove/disable, all disabled for enable).
     pub all: bool,
 }
 
@@ -72,30 +74,6 @@ pub struct AgentRequest {
     pub agents: Vec<String>,
     /// Unlink (disconnect) the agents' skills dirs instead of linking them.
     pub unlink: bool,
-}
-
-/// Request for [`Manager::disable`].
-///
-/// `Default` is a no-op that only reports enabled names — set `skills` or `all` to
-/// actually disable anything.
-#[derive(Debug, Clone, Default)]
-pub struct DisableRequest {
-    /// Skill names to disable (the CLI merges positional args and `--skill` here).
-    pub skills: Vec<String>,
-    /// Disable all currently enabled skills.
-    pub all: bool,
-}
-
-/// Request for [`Manager::enable`].
-///
-/// `Default` is a no-op that only reports disabled names — set `skills` or `all` to
-/// actually enable anything.
-#[derive(Debug, Clone, Default)]
-pub struct EnableRequest {
-    /// Skill names to enable (the CLI merges positional args and `--skill` here).
-    pub skills: Vec<String>,
-    /// Enable all currently disabled skills.
-    pub all: bool,
 }
 
 // ============================ Outcome types ============================
@@ -187,46 +165,21 @@ pub struct ListedSkill {
     pub installed_at: Option<u64>,
 }
 
-/// Result of [`Manager::remove`].
+/// Result of [`Manager::remove`], [`Manager::disable`] and [`Manager::enable`]
+/// — the three selection commands share one outcome shape.
 #[derive(Debug)]
-pub struct RemoveOutcome {
-    /// Names of the installed (enabled) skills as reported — the SKILL.md
-    /// frontmatter `name` (used by the no-args hint).
-    pub installed: Vec<String>,
+pub struct SelectionOutcome {
+    /// Names of the skills currently selectable by the command (installed
+    /// skills for remove/disable, disabled skills for enable) — used by the
+    /// no-args hint.
+    pub available: Vec<String>,
     /// Requested names (used by the no-match hint).
     pub requested: Vec<String>,
-    /// Names actually removed, as reported.
-    pub removed: Vec<String>,
-}
-
-/// Result of [`Manager::disable`].
-#[derive(Debug)]
-pub struct DisableOutcome {
-    /// Names of the currently enabled skills as reported — the SKILL.md
-    /// frontmatter `name` (used by the no-args hint).
-    pub installed: Vec<String>,
-    /// Requested names (used by the no-match hint).
-    pub requested: Vec<String>,
-    /// Names actually disabled, as reported.
-    pub disabled: Vec<String>,
-    /// Names that were already disabled (idempotent no-op).
+    /// Names the command actually applied to (removed / disabled / enabled),
+    /// as reported.
+    pub applied: Vec<String>,
+    /// Names that were already in the target state (idempotent no-op).
     pub already: Vec<String>,
-    /// Requested names that matched neither enabled nor disabled skills.
-    pub missing: Vec<String>,
-}
-
-/// Result of [`Manager::enable`].
-#[derive(Debug)]
-pub struct EnableOutcome {
-    /// Names of the currently disabled skills as reported — the SKILL.md
-    /// frontmatter `name` (used by the no-args hint).
-    pub disabled: Vec<String>,
-    /// Requested names (used by the no-match hint).
-    pub requested: Vec<String>,
-    /// Names actually enabled, as reported.
-    pub enabled: Vec<String>,
-    /// Names that were already enabled (idempotent no-op).
-    pub already: Vec<String>,
-    /// Requested names that matched neither enabled nor disabled skills.
+    /// Requested names that matched nothing.
     pub missing: Vec<String>,
 }

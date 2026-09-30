@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use agents_skills::{AddRequest, Manager, RemoveRequest};
+use agents_skills::{AddRequest, Manager, SelectionRequest};
 
 /// Create a minimal skill directory on disk for the demo.
 fn write_skill(root: &Path, name: &str) -> std::path::PathBuf {
@@ -46,11 +46,11 @@ fn main() -> agents_skills::Result<()> {
     }
 
     // Remove it again.
-    let removed = manager.remove(&RemoveRequest {
+    let removed = manager.remove(&SelectionRequest {
         skills: vec!["hello".to_string()],
         ..Default::default()
     })?;
-    println!("Removed: {:?}", removed.removed);
+    println!("Removed: {:?}", removed.applied);
 
     Ok(())
 }

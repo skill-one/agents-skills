@@ -21,7 +21,7 @@ fn remove_deletes_installed_skill() {
         .args(["remove", "pdf"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Successfully removed 1 skill"));
+        .stdout(predicate::str::contains("Removed 1 skill(s)"));
 
     p.assert_absent(".agents/skills/pdf");
 }
@@ -74,7 +74,7 @@ fn remove_nonexistent_prints_no_match() {
         .args(["remove", "ghost"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("No matching skills found"));
+        .stdout(predicate::str::contains("not found"));
 }
 
 #[test]
@@ -93,7 +93,7 @@ fn remove_deletes_disabled_skill() {
         .args(["remove", "legacy"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Successfully removed 1 skill"));
+        .stdout(predicate::str::contains("Removed 1 skill(s)"));
 
     p.assert_absent(".agents/disabled-skills/legacy");
 }
@@ -122,7 +122,7 @@ fn remove_clears_a_skill_present_in_both_dirs() {
         .args(["remove", "--all"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Successfully removed 1 skill"));
+        .stdout(predicate::str::contains("Removed 1 skill(s)"));
 
     p.assert_absent(".agents/skills/pdf-master");
     p.assert_absent(".agents/disabled-skills/PDF Master");

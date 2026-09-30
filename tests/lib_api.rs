@@ -4,8 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use agents_skills::{
-    AddRequest, AgentRequest, DisableRequest, EnableRequest, LinkOutcome, Manager, RemoveRequest,
-    SkillsError,
+    AddRequest, AgentRequest, LinkOutcome, Manager, SelectionRequest, SkillsError,
 };
 
 fn write_skill_source(root: &Path, rel_dir: &str, name: &str) -> PathBuf {
@@ -56,12 +55,12 @@ fn lib_add_list_remove_roundtrip() {
 
     // Remove it.
     let removed = manager
-        .remove(&RemoveRequest {
+        .remove(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
         .unwrap();
-    assert_eq!(removed.removed, vec!["pdf".to_string()]);
+    assert_eq!(removed.applied, vec!["pdf".to_string()]);
     assert!(!home.join(".agents/skills/pdf").exists());
 }
 
@@ -93,7 +92,7 @@ fn lib_add_skips_an_already_installed_skill() {
 
     // A *disabled* skill is still installed: still skipped.
     manager
-        .disable(&DisableRequest {
+        .disable(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
@@ -369,12 +368,12 @@ fn lib_disable_then_enable_roundtrip() {
 
     // Disable: the dir moves out of the canonical dir into disabled-skills.
     let disabled = manager
-        .disable(&DisableRequest {
+        .disable(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
         .unwrap();
-    assert_eq!(disabled.disabled, vec!["pdf".to_string()]);
+    assert_eq!(disabled.applied, vec!["pdf".to_string()]);
     assert!(disabled.already.is_empty());
     assert!(disabled.missing.is_empty());
     assert!(!home.join(".agents/skills/pdf").exists());
@@ -387,12 +386,12 @@ fn lib_disable_then_enable_roundtrip() {
 
     // Enable: the dir moves back into the canonical dir.
     let enabled = manager
-        .enable(&EnableRequest {
+        .enable(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
         .unwrap();
-    assert_eq!(enabled.enabled, vec!["pdf".to_string()]);
+    assert_eq!(enabled.applied, vec!["pdf".to_string()]);
     assert!(home.join(".agents/skills/pdf/SKILL.md").exists());
     assert!(!home.join(".agents/disabled-skills/pdf").exists());
 
@@ -415,44 +414,44 @@ fn lib_disable_enable_are_idempotent() {
 
     // Disabling twice: the second call reports "already disabled", not an error.
     manager
-        .disable(&DisableRequest {
+        .disable(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
         .unwrap();
     let again = manager
-        .disable(&DisableRequest {
+        .disable(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
         .unwrap();
-    assert!(again.disabled.is_empty());
+    assert!(again.applied.is_empty());
     assert_eq!(again.already, vec!["pdf".to_string()]);
 
     // Enabling twice: the second call reports "already enabled".
     manager
-        .enable(&EnableRequest {
+        .enable(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
         .unwrap();
     let again = manager
-        .enable(&EnableRequest {
+        .enable(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
         .unwrap();
-    assert!(again.enabled.is_empty());
+    assert!(again.applied.is_empty());
     assert_eq!(again.already, vec!["pdf".to_string()]);
 
     // Missing names are reported via `missing`, never errors.
     let missing = manager
-        .disable(&DisableRequest {
+        .disable(&SelectionRequest {
             skills: vec!["nope".to_string()],
             ..Default::default()
         })
         .unwrap();
-    assert!(missing.disabled.is_empty());
+    assert!(missing.applied.is_empty());
     assert!(missing.already.is_empty());
     assert_eq!(missing.missing, vec!["nope".to_string()]);
 }
@@ -475,7 +474,7 @@ fn lib_enable_replaces_the_enabled_copy_of_a_reinstalled_skill() {
         })
         .unwrap();
     manager
-        .disable(&DisableRequest {
+        .disable(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
@@ -485,12 +484,12 @@ fn lib_enable_replaces_the_enabled_copy_of_a_reinstalled_skill() {
     // The copy being enabled wins; this used to fail on the occupied target and
     // leave the skill present in both dirs.
     let outcome = manager
-        .enable(&EnableRequest {
+        .enable(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
         .unwrap();
-    assert_eq!(outcome.enabled, vec!["pdf".to_string()]);
+    assert_eq!(outcome.applied, vec!["pdf".to_string()]);
     assert!(outcome.already.is_empty());
     assert!(outcome.missing.is_empty());
 
@@ -512,7 +511,7 @@ fn lib_disable_replaces_the_parked_copy_of_a_reinstalled_skill() {
         })
         .unwrap();
     manager
-        .disable(&DisableRequest {
+        .disable(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
@@ -520,12 +519,12 @@ fn lib_disable_replaces_the_parked_copy_of_a_reinstalled_skill() {
     third_party_reinstall(&home, "pdf");
 
     let outcome = manager
-        .disable(&DisableRequest {
+        .disable(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
         .unwrap();
-    assert_eq!(outcome.disabled, vec!["pdf".to_string()]);
+    assert_eq!(outcome.applied, vec!["pdf".to_string()]);
 
     assert!(!home.join(".agents/skills/pdf").exists());
     assert!(home.join(".agents/disabled-skills/pdf/SKILL.md").exists());
@@ -542,13 +541,13 @@ fn lib_remove_deletes_both_copies_under_either_name() {
     write_skill_source(&home, ".agents/disabled-skills/PDF Master", "PDF Master");
 
     let outcome = manager
-        .remove(&RemoveRequest {
+        .remove(&SelectionRequest {
             all: true,
             ..Default::default()
         })
         .unwrap();
 
-    assert_eq!(outcome.removed, vec!["pdf-master".to_string()]);
+    assert_eq!(outcome.applied, vec!["pdf-master".to_string()]);
     assert!(!home.join(".agents/skills/pdf-master").exists());
     assert!(!home.join(".agents/disabled-skills/PDF Master").exists());
     assert!(manager.list().unwrap().is_empty());
@@ -568,33 +567,33 @@ fn lib_selects_skills_by_frontmatter_name_over_dir_name() {
     assert_eq!(listed[0].path, home.join(".agents/skills/acrobat"));
 
     let disabled = manager
-        .disable(&DisableRequest {
+        .disable(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
         .unwrap();
-    assert_eq!(disabled.disabled, vec!["pdf".to_string()]);
+    assert_eq!(disabled.applied, vec!["pdf".to_string()]);
     assert!(
         home.join(".agents/disabled-skills/acrobat/SKILL.md")
             .exists()
     );
 
     let enabled = manager
-        .enable(&EnableRequest {
+        .enable(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
         .unwrap();
-    assert_eq!(enabled.enabled, vec!["pdf".to_string()]);
+    assert_eq!(enabled.applied, vec!["pdf".to_string()]);
     assert!(home.join(".agents/skills/acrobat/SKILL.md").exists());
 
     let removed = manager
-        .remove(&RemoveRequest {
+        .remove(&SelectionRequest {
             skills: vec!["pdf".to_string()],
             ..Default::default()
         })
         .unwrap();
-    assert_eq!(removed.removed, vec!["pdf".to_string()]);
+    assert_eq!(removed.applied, vec!["pdf".to_string()]);
     assert!(!home.join(".agents/skills/acrobat").exists());
     assert!(manager.list().unwrap().is_empty());
 }
@@ -627,7 +626,7 @@ fn lib_slug_identity_with_verbatim_install_slot() {
 
     // disable/enable/remove all select by the slug, on the real directory.
     manager
-        .disable(&DisableRequest {
+        .disable(&SelectionRequest {
             skills: vec!["pdf-master".to_string()],
             ..Default::default()
         })
@@ -638,18 +637,18 @@ fn lib_slug_identity_with_verbatim_install_slot() {
     );
 
     manager
-        .enable(&EnableRequest {
+        .enable(&SelectionRequest {
             skills: vec!["pdf-master".to_string()],
             ..Default::default()
         })
         .unwrap();
 
     let removed = manager
-        .remove(&RemoveRequest {
+        .remove(&SelectionRequest {
             skills: vec!["pdf-master".to_string()],
             ..Default::default()
         })
         .unwrap();
-    assert_eq!(removed.removed, vec!["pdf-master".to_string()]);
+    assert_eq!(removed.applied, vec!["pdf-master".to_string()]);
     assert!(manager.list().unwrap().is_empty());
 }

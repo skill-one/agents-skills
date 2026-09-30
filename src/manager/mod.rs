@@ -9,18 +9,17 @@ use crate::core::agents::{AGENTS, Env, config_home, home, is_installed, is_nativ
 use crate::core::discover::{Skill, read_skill};
 use crate::core::github::fetch_skill;
 use crate::core::install::{
-    ScannedSkill, install_skill, list_disabled_skills, list_installed_skills, remove_skill,
-    scan_disabled, scan_installed,
+    ScannedSkill, install_skill, list_disabled_skills, list_installed_skills, scan_disabled,
+    scan_installed,
 };
 use crate::core::link::{is_agent_linked, link_agent, private_content, unlink_agent};
 use crate::core::source::{SourceType, parse_source};
 use crate::error::{Result, SkillsError};
 
-use crate::manager::select::{resolve_target_agents, resolve_to_remove, set_enabled_state};
+use crate::manager::select::{SelectionOp, apply_selection, resolve_target_agents};
 pub use crate::manager::types::{
-    AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus,
-    DisableOutcome, DisableRequest, EnableOutcome, EnableRequest, ListedSkill, RemoveOutcome,
-    RemoveRequest,
+    AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus, ListedSkill,
+    SelectionOutcome, SelectionRequest,
 };
 mod select;
 #[cfg(test)]
@@ -425,7 +424,7 @@ impl Manager {
     /// home access):
     ///
     /// ```
-    /// use agents_skills::{DisableRequest, Manager};
+    /// use agents_skills::{Manager, SelectionRequest};
     ///
     /// let tmp = tempfile::TempDir::new().unwrap();
     /// // Simulate an installed skill in the canonical dir.
@@ -443,43 +442,49 @@ impl Manager {
     ///     .cwd(tmp.path().join("project"))
     ///     .build()?;
     ///
-    /// let outcome = manager.disable(&DisableRequest {
+    /// let outcome = manager.disable(&SelectionRequest {
     ///     skills: vec!["pdf".into()],
     ///     ..Default::default()
     /// })?;
-    /// assert_eq!(outcome.disabled, vec!["pdf".to_string()]);
+    /// assert_eq!(outcome.applied, vec!["pdf".to_string()]);
     /// # Ok::<(), agents_skills::Error>(())
     /// ```
     ///
     /// # Errors
     ///
     /// [`SkillsError::Io`] if a directory move fails.
-    pub fn disable(&self, req: &DisableRequest) -> Result<DisableOutcome> {
+    pub fn disable(&self, req: &SelectionRequest) -> Result<SelectionOutcome> {
         let installed = scan_installed(&self.env);
         let disabled = scan_disabled(&self.env);
+        let available = reported_names(&installed);
 
         if req.skills.is_empty() && !req.all {
-            return Ok(DisableOutcome {
-                installed: reported_names(&installed),
+            return Ok(SelectionOutcome {
+                available,
                 requested: Vec::new(),
-                disabled: Vec::new(),
+                applied: Vec::new(),
                 already: Vec::new(),
                 missing: Vec::new(),
             });
         }
 
         let requested: Vec<String> = if req.all {
-            reported_names(&installed)
+            available
         } else {
             req.skills.clone()
         };
-        let (disabled_out, already, missing) =
-            set_enabled_state(&requested, &installed, &disabled, false, &self.env)?;
+        let (applied, already, missing) = apply_selection(
+            SelectionOp::Disable,
+            &requested,
+            &[&installed],
+            &disabled,
+            &self.env,
+        )?;
 
-        Ok(DisableOutcome {
-            installed: reported_names(&installed),
+        Ok(SelectionOutcome {
+            available: reported_names(&installed),
             requested,
-            disabled: disabled_out,
+            applied,
             already,
             missing,
         })
@@ -506,7 +511,7 @@ impl Manager {
     /// home access):
     ///
     /// ```
-    /// use agents_skills::{EnableRequest, Manager};
+    /// use agents_skills::{Manager, SelectionRequest};
     ///
     /// let tmp = tempfile::TempDir::new().unwrap();
     /// // Simulate a disabled skill parked in the disabled-skills dir.
@@ -524,43 +529,49 @@ impl Manager {
     ///     .cwd(tmp.path().join("project"))
     ///     .build()?;
     ///
-    /// let outcome = manager.enable(&EnableRequest {
+    /// let outcome = manager.enable(&SelectionRequest {
     ///     skills: vec!["pdf".into()],
     ///     ..Default::default()
     /// })?;
-    /// assert_eq!(outcome.enabled, vec!["pdf".to_string()]);
+    /// assert_eq!(outcome.applied, vec!["pdf".to_string()]);
     /// # Ok::<(), agents_skills::Error>(())
     /// ```
     ///
     /// # Errors
     ///
     /// [`SkillsError::Io`] if a directory move fails.
-    pub fn enable(&self, req: &EnableRequest) -> Result<EnableOutcome> {
+    pub fn enable(&self, req: &SelectionRequest) -> Result<SelectionOutcome> {
         let disabled = scan_disabled(&self.env);
         let installed = scan_installed(&self.env);
+        let available = reported_names(&disabled);
 
         if req.skills.is_empty() && !req.all {
-            return Ok(EnableOutcome {
-                disabled: reported_names(&disabled),
+            return Ok(SelectionOutcome {
+                available,
                 requested: Vec::new(),
-                enabled: Vec::new(),
+                applied: Vec::new(),
                 already: Vec::new(),
                 missing: Vec::new(),
             });
         }
 
         let requested: Vec<String> = if req.all {
-            reported_names(&disabled)
+            available
         } else {
             req.skills.clone()
         };
-        let (enabled_out, already, missing) =
-            set_enabled_state(&requested, &disabled, &installed, true, &self.env)?;
+        let (applied, already, missing) = apply_selection(
+            SelectionOp::Enable,
+            &requested,
+            &[&disabled],
+            &installed,
+            &self.env,
+        )?;
 
-        Ok(EnableOutcome {
-            disabled: reported_names(&disabled),
+        Ok(SelectionOutcome {
+            available: reported_names(&disabled),
             requested,
-            enabled: enabled_out,
+            applied,
             already,
             missing,
         })
@@ -583,7 +594,7 @@ impl Manager {
     /// # Examples
     ///
     /// ```
-    /// use agents_skills::{Manager, RemoveRequest};
+    /// use agents_skills::{Manager, SelectionRequest};
     ///
     /// let tmp = tempfile::TempDir::new().unwrap();
     /// let manager = Manager::builder()
@@ -591,31 +602,38 @@ impl Manager {
     ///     .cwd(tmp.path().join("project"))
     ///     .build()?;
     ///
-    /// let req = RemoveRequest {
+    /// let req = SelectionRequest {
     ///     skills: vec!["pdf".to_string()],
     ///     ..Default::default()
     /// };
     /// // Nothing installed in the scratch dir, so this is a harmless no-op.
     /// let outcome = manager.remove(&req)?;
-    /// assert!(outcome.removed.is_empty());
+    /// assert!(outcome.applied.is_empty());
     /// # Ok::<(), agents_skills::Error>(())
     /// ```
-    pub fn remove(&self, req: &RemoveRequest) -> Result<RemoveOutcome> {
+    ///
+    /// # Errors
+    ///
+    /// [`SkillsError::Io`] if a directory delete fails.
+    pub fn remove(&self, req: &SelectionRequest) -> Result<SelectionOutcome> {
         // Disabled skills are still installed (parked in `disabled-skills`): scan them
         // too so `remove <name>` and `remove --all` can find and delete them.
         let installed = scan_installed(&self.env);
         let disabled = scan_disabled(&self.env);
+        let available = reported_names(&installed);
 
-        // List-only mode (no skills and not --all).
         if req.skills.is_empty() && !req.all {
-            return Ok(RemoveOutcome {
-                installed: reported_names(&installed),
+            return Ok(SelectionOutcome {
+                available,
                 requested: Vec::new(),
-                removed: Vec::new(),
+                applied: Vec::new(),
+                already: Vec::new(),
+                missing: Vec::new(),
             });
         }
 
-        // Resolve the skill names to remove against the reported names.
+        // Resolve against both dirs: a requested name parked in `disabled-skills`
+        // is removed just the same.
         let requested: Vec<String> = if req.all {
             installed
                 .iter()
@@ -625,39 +643,24 @@ impl Manager {
         } else {
             req.skills.clone()
         };
-        if requested.is_empty() {
-            return Ok(RemoveOutcome {
-                installed: reported_names(&installed),
-                requested: Vec::new(),
-                removed: Vec::new(),
-            });
-        }
-
-        let selected = resolve_to_remove(&requested, &installed, &disabled);
-        if selected.is_empty() {
-            return Ok(RemoveOutcome {
-                installed: reported_names(&installed),
-                requested,
-                removed: Vec::new(),
-            });
-        }
 
         // Remove every copy of each selected skill: the canonical one (visible
         // to every linked agent at once) and any parked copy in the disabled
         // dir, including copies under a differently normalized directory name.
-        // The moves happen on the real on-disk directories; the outcome
-        // reports the frontmatter names.
-        let mut removed: Vec<String> = Vec::new();
-        for skill in &selected {
-            if remove_skill(&skill.dir_name, &self.env) {
-                removed.push(skill.name.clone());
-            }
-        }
+        let (applied, already, missing) = apply_selection(
+            SelectionOp::Remove,
+            &requested,
+            &[&installed, &disabled],
+            &[],
+            &self.env,
+        )?;
 
-        Ok(RemoveOutcome {
-            installed: reported_names(&installed),
+        Ok(SelectionOutcome {
+            available: reported_names(&installed),
             requested,
-            removed,
+            applied,
+            already,
+            missing,
         })
     }
 }

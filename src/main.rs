@@ -50,10 +50,16 @@ fn main() {
 
     let result: Result<()> = match cli.command {
         Some(Command::Add(a)) => commands::add::run(&manager, a),
-        Some(Command::Remove(r)) => commands::remove::run(&manager, r),
+        Some(Command::Remove(r)) => {
+            commands::selection::run(&manager, r, commands::selection::Action::Remove)
+        }
         Some(Command::List(l)) => commands::list::run(&manager, l),
-        Some(Command::Disable(d)) => commands::disable::run(&manager, d),
-        Some(Command::Enable(e)) => commands::enable::run(&manager, e),
+        Some(Command::Disable(d)) => {
+            commands::selection::run(&manager, d, commands::selection::Action::Disable)
+        }
+        Some(Command::Enable(e)) => {
+            commands::selection::run(&manager, e, commands::selection::Action::Enable)
+        }
         Some(Command::Agent(a)) => commands::agent::run(&manager, a),
         None => Ok(()),
     };

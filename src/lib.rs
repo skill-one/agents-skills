@@ -41,9 +41,8 @@ pub mod manager;
 
 // High-level facade.
 pub use manager::{
-    AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus,
-    DisableOutcome, DisableRequest, EnableOutcome, EnableRequest, ListedSkill, Manager,
-    ManagerBuilder, RemoveOutcome, RemoveRequest,
+    AddOutcome, AddRequest, AgentLinkResult, AgentOutcome, AgentRequest, AgentStatus, ListedSkill,
+    Manager, ManagerBuilder, SelectionOutcome, SelectionRequest,
 };
 
 // Data types carried by the facade's outcomes (implementation lives in the private core).

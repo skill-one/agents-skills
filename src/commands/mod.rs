@@ -5,10 +5,8 @@
 
 pub mod add;
 pub mod agent;
-pub mod disable;
-pub mod enable;
 pub mod list;
-pub mod remove;
+pub mod selection;
 
 use std::path::Path;
 

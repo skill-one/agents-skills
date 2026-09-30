@@ -28,13 +28,13 @@ pub enum Command {
     /// Add a skill (local directory or owner/repo/slug)
     Add(AddArgs),
     /// Remove installed skills
-    Remove(RemoveArgs),
+    Remove(SelectionArgs),
     /// List installed skills
     List(ListArgs),
     /// Disable installed skills
-    Disable(DisableArgs),
+    Disable(SelectionArgs),
     /// Enable previously disabled skills
-    Enable(EnableArgs),
+    Enable(SelectionArgs),
     /// Manage agents' skills dirs link state (--link / --unlink / --status)
     Agent(AgentArgs),
 }
@@ -50,13 +50,13 @@ pub struct AddArgs {
 }
 
 #[derive(Debug, Args)]
-pub struct RemoveArgs {
-    /// Skill names to remove
+pub struct SelectionArgs {
+    /// Skill names
     pub skills: Vec<String>,
-    /// Specify skill names to remove
+    /// Skill name (repeatable)
     #[arg(short = 's', long = "skill", num_args = 1..)]
     pub skill: Vec<String>,
-    /// Remove all installed skills
+    /// All available skills (installed for remove/disable, disabled for enable)
     #[arg(long = "all")]
     pub all: bool,
 }
@@ -66,30 +66,6 @@ pub struct ListArgs {
     /// Output as JSON (machine-readable, no ANSI codes)
     #[arg(long = "json")]
     pub json: bool,
-}
-
-#[derive(Debug, Args)]
-pub struct DisableArgs {
-    /// Skill names to disable
-    pub skills: Vec<String>,
-    /// Specify skill names to disable
-    #[arg(short = 's', long = "skill", num_args = 1..)]
-    pub skill: Vec<String>,
-    /// Disable all currently enabled skills
-    #[arg(long = "all")]
-    pub all: bool,
-}
-
-#[derive(Debug, Args)]
-pub struct EnableArgs {
-    /// Skill names to enable
-    pub skills: Vec<String>,
-    /// Specify skill names to enable
-    #[arg(short = 's', long = "skill", num_args = 1..)]
-    pub skill: Vec<String>,
-    /// Enable all currently disabled skills
-    #[arg(long = "all")]
-    pub all: bool,
 }
 
 #[derive(Debug, Args)]

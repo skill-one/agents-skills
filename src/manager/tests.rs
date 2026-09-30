@@ -3,7 +3,7 @@
 use crate::core::install::ScannedSkill;
 use crate::core::test_utils::env_at;
 use crate::error::SkillsError;
-use crate::manager::select::{resolve_target_agents, resolve_to_remove};
+use crate::manager::select::{SelectionOp, apply_selection, resolve_target_agents};
 
 fn scanned(name: &str) -> ScannedSkill {
     ScannedSkill {
@@ -13,7 +13,19 @@ fn scanned(name: &str) -> ScannedSkill {
 }
 
 #[test]
-fn resolve_to_remove_matches_on_reported_names() {
+fn selection_matches_on_reported_names_across_sources() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let env = env_at(&tmp);
+    // On-disk copies, so a Remove actually deletes something and reports it.
+    for (base, rel) in [
+        (".agents/skills", "pdf"),
+        (".agents/skills", "PDF Master"),
+        (".agents/disabled-skills", "Legacy Skill"),
+    ] {
+        let dir = tmp.path().join(base).join(rel);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("SKILL.md"), "x").unwrap();
+    }
     let installed = vec![scanned("pdf"), scanned("PDF Master")];
     let disabled = vec![ScannedSkill {
         name: "legacy-skill".to_string(),
@@ -25,14 +37,38 @@ fn resolve_to_remove_matches_on_reported_names() {
         "unknown".to_string(),
     ];
 
-    // Only reported (frontmatter) names resolve; "unknown" matches nothing.
-    let selected = resolve_to_remove(&requested, &installed, &disabled);
-    let names: Vec<&str> = selected.iter().map(|s| s.name.as_str()).collect();
-    assert_eq!(names, vec!["legacy-skill", "pdf"]);
+    // Only reported (frontmatter) names resolve; "unknown" is missing.
+    let (applied, _already, missing) = apply_selection(
+        SelectionOp::Remove,
+        &requested,
+        &[&installed, &disabled],
+        &[],
+        &env,
+    )
+    .unwrap();
+    assert_eq!(applied, vec!["legacy-skill", "pdf"]);
+    assert_eq!(missing, vec!["unknown".to_string()]);
+}
 
-    // The resolved entry carries the real on-disk directory.
-    let legacy = selected.iter().find(|s| s.name == "legacy-skill").unwrap();
-    assert_eq!(legacy.dir_name, "Legacy Skill");
+#[test]
+fn selection_classifies_already_and_missing() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let env = env_at(&tmp);
+    let installed = vec![scanned("pdf")];
+    let disabled = vec![scanned("old")];
+
+    // Disabling a disabled skill is already; an unknown name is missing.
+    let (applied, already, missing) = apply_selection(
+        SelectionOp::Disable,
+        &["old".to_string(), "ghost".to_string()],
+        &[&installed],
+        &disabled,
+        &env,
+    )
+    .unwrap();
+    assert!(applied.is_empty());
+    assert_eq!(already, vec!["old".to_string()]);
+    assert_eq!(missing, vec!["ghost".to_string()]);
 }
 
 #[test]
