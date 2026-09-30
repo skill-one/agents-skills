@@ -11,6 +11,29 @@
 
 ### 变更
 
+- **(breaking)** `Manager::remove`/`disable`/`enable` 共用一套选择模型：
+  `SelectionRequest { skills, all }` 取代 `RemoveRequest` / `DisableRequest` /
+  `EnableRequest`，`SelectionOutcome { available, requested, applied, already,
+  missing }` 取代三个按动词命名的 outcome（`removed`/`disabled`/`enabled` →
+  `applied`，`installed`/`disabled` → `available`）。`remove` 现在与其他两个
+  一致，把未匹配的名称报告为 `missing`。
+- `Manager::new` 与 `ManagerBuilder::build` 返回 `Result`：平台无法确定主目录时
+  报错，而不是静默地把 `~/.agents` 解析到当前目录。
+- `install_skill` 返回 `Result<InstallOutcome>`；槽位名超过 255 字节时给出可读
+  错误，而不是在 rename 时抛出晦涩的操作系统错误。
+- claude-code "根目录缺失仍链接" 的特例改为表驱动（`agents.jsonl` 的
+  `link_without_root` 字段，由 `scripts/sync-agents.sh` 的本地 overrides 合并），
+  不再是链接代码中的名字判断。
+
+### 修复
+
+- CLI 错误输出到 stderr（此前打印到 stdout，而顶层处理器用的是 stderr）。
+- 仅当 stdout 是终端且未设置 `NO_COLOR` 时才输出 ANSI 颜色——管道输出为纯文本。
+- `INSTALL_INTERNAL_SKILLS` 在 manager 构造时经由 `Env` 解析（或注入的
+  `env_var`），库的沙箱不再读取真实进程环境。
+- `repo_root_of` 传播 rename/create 失败，不再吞掉错误后在后续报出误导性的
+  "no skill with slug"；HTTP 响应体上限 512 MiB。
+
 - **(breaking)** 安装参数改为 skills.sh 风格的 id `owner/repo/slug`；旧的
   `owner/repo@<skill>` 形式会被拒绝并给出迁移提示。id 的最后一段是技能的
   **slug**——由 SKILL.md frontmatter 的 `name` slug 化而来（小写、每个空格替换

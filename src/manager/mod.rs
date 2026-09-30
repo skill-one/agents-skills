@@ -251,17 +251,17 @@ impl Manager {
     /// Linking is refused only when the agent dir is a symlink pointing somewhere
     /// other than the canonical dir.
     ///
-    /// Agents native to the requested scope (whose skills dir already is that
-    /// scope's canonical dir) report [`LinkOutcome::AlreadyLinked`]. Nativeness
-    /// is scope-aware: e.g. Antigravity is native at project scope
-    /// (`.agents/skills`) but linked at global scope (`~/.gemini/config/skills`).
-    /// Agents whose root dir does not exist in this scope are reported as
-    /// [`LinkOutcome::Skipped`] (except `claude-code`, the historical exception).
+    /// Agents whose skills dir already is the canonical dir report
+    /// [`LinkOutcome::AlreadyLinked`] (nativeness is per agent: e.g. an agent
+    /// configured to read `~/.agents/skills` directly needs no link, while
+    /// `~/.gemini/config/skills` does). Agents whose root dir does not exist
+    /// are reported as [`LinkOutcome::Skipped`] — unless their table row sets
+    /// `link_without_root` (e.g. `claude-code`).
     ///
     /// # Selection defaults
     ///
-    /// - `agents` empty → auto-detect installed agents (plus the universal agents);
-    ///   a `"*"` entry → every known agent.
+    /// - `agents` empty → auto-detect installed agents; a `"*"` entry → every
+    ///   known agent.
     ///
     /// # Errors
     ///
@@ -283,13 +283,11 @@ impl Manager {
         Ok(AgentOutcome { results })
     }
 
-    /// Link status of every installed agent in this scope.
+    /// Link status of every installed agent.
     ///
     /// Only agents detected as installed locally (or already linked) are reported.
-    /// Agents that natively read this scope's canonical dir report `canonical`;
-    /// agents connected via a directory-level symlink report `linked`. Both
-    /// classifications are scope-aware (an agent may be canonical at project
-    /// scope but linked at global scope).
+    /// Agents that natively read the canonical dir report `canonical`; agents
+    /// connected via a directory-level symlink report `linked`.
     ///
     /// For unlinked, non-canonical agents the status classifies the agent dir's
     /// private content (`internal_skills` / `internal_others`) — what linking
@@ -336,9 +334,9 @@ impl Manager {
     ///
     /// Scans the canonical skills directory (plus the disabled dir), producing
     /// serde-serializable [`ListedSkill`] values — the same shape emitted by
-    /// `list --json`. Each entry's `name` is the `name` parsed from the
-    /// SKILL.md frontmatter (falling back to the directory name when the
-    /// manifest declares none), and `path` carries the skill's real on-disk
+    /// `list --json`. Each entry's `name` is the slugified `name` parsed from
+    /// the SKILL.md frontmatter — a manifest without a non-empty `name` is not
+    /// a skill and is never listed — and `path` carries the skill's real on-disk
     /// directory. Which agents see a skill is not per-skill: every linked or
     /// native agent sees all skills in the canonical dir. Use
     /// [`Manager::agent_status`] to inspect that.
@@ -687,8 +685,7 @@ impl ManagerBuilder {
 
     /// Override the current working directory.
     ///
-    /// Affects project-scope installs (`.agents/skills`) and
-    /// scope auto-detection.
+    /// Affects cwd-relative agent detection.
     pub fn cwd(mut self, p: impl Into<PathBuf>) -> Self {
         self.cwd = Some(p.into());
         self

@@ -96,6 +96,7 @@ agent 表位于 `src/core/agents.jsonl` —— 每个 agent 一行 JSON,编译�
   "detect": [
     { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude" } },
   ],
+  "link_without_root": true, // 可选:根目录不存在时仍然链接
 }
 ```
 
@@ -110,6 +111,11 @@ agent 表位于 `src/core/agents.jsonl` —— 每个 agent 一行 JSON,编译�
 | `{"env_home": {"var": "...", "default": "...", "path": "..."}}` | `$VAR \|\| home/<default>`,再拼接 `<path>` |
 | `{"env_var": {"var": "...", "path": "..."}}`                    | `$VAR/<path>`;变量未设置时不匹配           |
 | `{"system": "/abs/path"}`                                       | 绝对路径;仅开启系统探测时才检查            |
+
+`link_without_root` 默认为 `false`;为 `true` 时(目前仅 `claude-code`),即使
+agent 的根目录尚不存在也会建立链接。上游表不含该字段——`scripts/sync-agents.sh`
+会把 `LOCAL_OVERRIDES` 合并进生成的表。`INSTALL_INTERNAL_SKILLS` 在 manager
+构造时通过 `Env` 解析,库的沙箱环境因此保持封闭。
 
 agent 是否需要符号链接由 `agents.rs` 中的 `is_native` 判定:将解析后的 `skills_dir`
 路径规格与 `~/.agents/skills` 比较——只有目录恰好等于它的 agent(如 cline、warp)

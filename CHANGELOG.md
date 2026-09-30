@@ -11,6 +11,37 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 ### Changed
 
+- **(breaking)** `Manager::remove`/`disable`/`enable` share one selection
+  model: `SelectionRequest { skills, all }` replaces `RemoveRequest` /
+  `DisableRequest` / `EnableRequest`, and `SelectionOutcome { available,
+  requested, applied, already, missing }` replaces the three per-verb
+  outcomes (`removed`/`disabled`/`enabled` → `applied`,
+  `installed`/`disabled` → `available`). `remove` now reports unmatched
+  names as `missing` like the other two.
+- `Manager::new` and `ManagerBuilder::build` return `Result`: a platform
+  that cannot determine the home directory is an error instead of silently
+  resolving `~/.agents` against the current directory.
+- `install_skill` returns `Result<InstallOutcome>`; an install slot name
+  over 255 bytes fails with a readable message instead of an opaque OS
+  error at rename time.
+- The claude-code "link without root" exception is table-driven
+  (`link_without_root` in `agents.jsonl`, merged from
+  `scripts/sync-agents.sh` local overrides) instead of a name check in the
+  link code.
+
+### Fixed
+
+- CLI errors go to stderr (they were printed to stdout while the
+  top-level handler used stderr).
+- ANSI colors are emitted only when stdout is a terminal and `NO_COLOR` is
+  unset — piped output is plain text.
+- `INSTALL_INTERNAL_SKILLS` resolves through `Env` at manager construction
+  (or an injected `env_var`), so library sandboxes no longer read the real
+  process env.
+- `repo_root_of` propagates rename/create failures instead of swallowing
+  them and surfacing later as a misleading "no skill with slug" error; the
+  HTTP response body is capped at 512 MiB.
+
 - **(breaking)** The install argument is now the skills.sh-style id
   `owner/repo/slug`; the legacy `owner/repo@<skill>` form is rejected with a
   migration hint. The id's last segment is the skill's **slug** — its

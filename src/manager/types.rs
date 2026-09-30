@@ -67,7 +67,7 @@ pub struct SelectionRequest {
 
 /// Request for [`Manager::agent`] — one entry point mirroring the `agent` CLI command.
 ///
-/// `Default` links the auto-detected installed agents at project scope.
+/// `Default` links the auto-detected installed agents.
 #[derive(Debug, Clone, Default)]
 pub struct AgentRequest {
     /// `"*"` or specific agent names; empty = auto-detect installed agents.

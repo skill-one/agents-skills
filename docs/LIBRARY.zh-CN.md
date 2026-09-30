@@ -9,7 +9,7 @@
 
 ```toml
 [dependencies]
-agents-skills = "0.21"
+agents-skills = "0.26"
 ```
 
 ## 快速开始
@@ -17,7 +17,7 @@ agents-skills = "0.21"
 ```rust
 use agents_skills::{AddRequest, Manager};
 
-let manager = Manager::new();
+let manager = Manager::new()?;
 let outcome = manager.add(&AddRequest::new("anthropics/skills/pdf"))?;
 println!("{} (skipped={})", outcome.skill.name, outcome.skipped);
 let skills = manager.list()?;
@@ -33,9 +33,9 @@ let skills = manager.list()?;
 | [`Manager::agent`]        | [`AgentRequest`]   | [`AgentOutcome`]（逐 agent 结果）         |
 | [`Manager::agent_status`] | —                  | `Vec<`[`AgentStatus`]`>`                  |
 | [`Manager::list`]         | —                  | `Vec<`[`ListedSkill`]`>`（可序列化）      |
-| [`Manager::remove`]       | [`RemoveRequest`]  | [`RemoveOutcome`]（已移除名称）           |
-| [`Manager::disable`]      | [`DisableRequest`] | [`DisableOutcome`]（已禁用名称）          |
-| [`Manager::enable`]       | [`EnableRequest`]  | [`EnableOutcome`]（已启用名称）           |
+| [`Manager::remove`]       | [`SelectionRequest`] | [`SelectionOutcome`]（已应用名称）      |
+| [`Manager::disable`]      | [`SelectionRequest`] | [`SelectionOutcome`]（已应用名称）      |
+| [`Manager::enable`]       | [`SelectionRequest`] | [`SelectionOutcome`]（已应用名称）      |
 
 请求字段：
 
@@ -43,9 +43,7 @@ let skills = manager.list()?;
 | ------------------ | ---------------------------------------------------------------------------------------------------- |
 | [`AddRequest`]     | `source: String`（本地技能目录或 GitHub id `owner/repo/slug`）、`reference: Option<String>`（分支/标签/SHA） |
 | [`AgentRequest`]   | `agents: Vec<String>`（`"*"` 或名称，空 = 自动探测）、`unlink: bool`                                 |
-| [`RemoveRequest`]  | `skills: Vec<String>`、`all: bool`                                                                   |
-| [`DisableRequest`] | `skills: Vec<String>`、`all: bool`                                                                   |
-| [`EnableRequest`]  | `skills: Vec<String>`、`all: bool`                                                                   |
+| [`SelectionRequest`] | `skills: Vec<String>`、`all: bool`（remove/disable/enable 共用）                              |
 
 要点：
 
@@ -61,7 +59,7 @@ let skills = manager.list()?;
 ### 常见操作
 
 ```rust
-use agents_skills::{AddRequest, DisableRequest, EnableRequest, RemoveRequest};
+use agents_skills::{AddRequest, SelectionRequest};
 
 // 用 reference 钉住分支/标签/SHA（None = 默认分支）
 manager.add(&AddRequest {
@@ -73,9 +71,9 @@ manager.add(&AddRequest {
 let skills = manager.list()?;
 let json = serde_json::to_string_pretty(&skills)?; // 与 list --json 形状一致
 
-manager.remove(&RemoveRequest  { skills: vec!["pdf".into()], ..Default::default() })?;
-manager.disable(&DisableRequest{ skills: vec!["pdf".into()], ..Default::default() })?;
-manager.enable(&EnableRequest  { skills: vec!["pdf".into()], ..Default::default() })?;
+manager.remove(&SelectionRequest  { skills: vec!["pdf".into()], ..Default::default() })?;
+manager.disable(&SelectionRequest { skills: vec!["pdf".into()], ..Default::default() })?;
+manager.enable(&SelectionRequest  { skills: vec!["pdf".into()], ..Default::default() })?;
 ```
 
 ## 上下文注入：[`ManagerBuilder`]
@@ -87,10 +85,10 @@ let manager = Manager::builder()
     .cwd("/tmp/project")
     .env_var("CLAUDE_CONFIG_DIR", "/tmp/claude")
     .probe_system_dirs(false) // 跳过系统位置，保证测试封闭
-    .build();
+    .build()?;
 ```
 
-`Manager::new()` 等价于 `Manager::builder().build()`。可运行示例：
+`Manager::new()` 等价于 `Manager::builder().build()`；当平台无法确定主目录时二者都会返回错误。可运行示例：
 
 ```bash
 cargo run --example manage      # 在临时目录上演示 add → list → remove（无副作用）
@@ -119,9 +117,5 @@ cargo run --example add_skill   # 安装到真实环境
 [`AgentStatus`]: https://docs.rs/agents-skills/latest/agents_skills/struct.AgentStatus.html
 [`LinkOutcome::Refused`]: https://docs.rs/agents-skills/latest/agents_skills/enum.LinkOutcome.html
 [`ListedSkill`]: https://docs.rs/agents-skills/latest/agents_skills/struct.ListedSkill.html
-[`RemoveRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.RemoveRequest.html
-[`RemoveOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.RemoveOutcome.html
-[`DisableRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.DisableRequest.html
-[`DisableOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.DisableOutcome.html
-[`EnableRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.EnableRequest.html
-[`EnableOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.EnableOutcome.html
+[`SelectionRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.SelectionRequest.html
+[`SelectionOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.SelectionOutcome.html

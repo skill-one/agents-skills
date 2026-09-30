@@ -1,6 +1,6 @@
 [package]
 name = "agents-skills"
-version = "0.25.0"
+version = "0.26.0"
 edition = "2024"
 description = "A minimal, stable, easy-to-understand skill installer and manager for AI agents"
 license = "MIT OR Apache-2.0"
@@ -10,7 +10,7 @@ readme = "README.md"
 keywords = ["skills", "ai-agents", "cli", "installer", "claude"]
 categories = ["command-line-utilities", "development-tools"]
 rust-version = "1.88"
-exclude = [".github/", ".codebuddy/", "AGENTS.md"]
+exclude = [".github/", ".codebuddy/", "docs/", "tests/", "examples/", "scripts/", "AGENTS.md"]
 
 [[bin]]
 name = "agents-skills"

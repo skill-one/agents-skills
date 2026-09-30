@@ -104,6 +104,7 @@ Do not hand-edit the table — upstream only adds presentation fields
   "detect": [
     { "env_home": { "var": "CLAUDE_CONFIG_DIR", "default": ".claude" } },
   ],
+  "link_without_root": true, // optional: link even when the root dir is missing
 }
 ```
 
@@ -119,6 +120,13 @@ Exactly one of these keys per spec:
 | `{"env_home": {"var": "...", "default": "...", "path": "..."}}` | `$VAR \|\| home/<default>`, then `<path>` joined     |
 | `{"env_var": {"var": "...", "path": "..."}}`                    | `$VAR/<path>`; unmatched when the var is unset       |
 | `{"system": "/abs/path"}`                                       | absolute path; only probed when system probing is on |
+
+`link_without_root` defaults to `false`; when `true` (currently only
+`claude-code`), the agent is linked even before its root dir exists. The
+upstream table does not carry this field — `scripts/sync-agents.sh` merges
+`LOCAL_OVERRIDES` into the generated table. `INSTALL_INTERNAL_SKILLS` is
+resolved through `Env` at manager construction, so library sandboxes stay
+hermetic.
 
 Whether an agent needs a symlink is decided by `is_native` in `agents.rs`: the
 resolved `skills_dir` spec is compared against `~/.agents/skills` — only agents

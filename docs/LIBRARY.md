@@ -9,7 +9,7 @@ Embed the skill-manager into your own Rust tooling. For CLI usage see the
 
 ```toml
 [dependencies]
-agents-skills = "0.21"
+agents-skills = "0.26"
 ```
 
 ## Quick start
@@ -17,7 +17,7 @@ agents-skills = "0.21"
 ```rust
 use agents_skills::{AddRequest, Manager};
 
-let manager = Manager::new();
+let manager = Manager::new()?;
 let outcome = manager.add(&AddRequest::new("anthropics/skills/pdf"))?;
 println!("{} (skipped={})", outcome.skill.name, outcome.skipped);
 let skills = manager.list()?;
@@ -34,9 +34,9 @@ result.
 | [`Manager::agent`]        | [`AgentRequest`]   | [`AgentOutcome`] (per-agent results)      |
 | [`Manager::agent_status`] | —                  | `Vec<`[`AgentStatus`]`>`                  |
 | [`Manager::list`]         | —                  | `Vec<`[`ListedSkill`]`>` (serializable)   |
-| [`Manager::remove`]       | [`RemoveRequest`]  | [`RemoveOutcome`] (removed names)         |
-| [`Manager::disable`]      | [`DisableRequest`] | [`DisableOutcome`] (disabled names)       |
-| [`Manager::enable`]       | [`EnableRequest`]  | [`EnableOutcome`] (enabled names)         |
+| [`Manager::remove`]       | [`SelectionRequest`] | [`SelectionOutcome`] (applied names)    |
+| [`Manager::disable`]      | [`SelectionRequest`] | [`SelectionOutcome`] (applied names)    |
+| [`Manager::enable`]       | [`SelectionRequest`] | [`SelectionOutcome`] (applied names)    |
 
 Request fields:
 
@@ -44,9 +44,7 @@ Request fields:
 | ------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | [`AddRequest`]     | `source: String` (a local skill directory or the GitHub id `owner/repo/slug`), `reference: Option<String>` (branch/tag/SHA) |
 | [`AgentRequest`]   | `agents: Vec<String>` (`"*"` or names, empty = auto-detect), `unlink: bool`                                      |
-| [`RemoveRequest`]  | `skills: Vec<String>`, `all: bool`                                                                               |
-| [`DisableRequest`] | `skills: Vec<String>`, `all: bool`                                                                               |
-| [`EnableRequest`]  | `skills: Vec<String>`, `all: bool`                                                                               |
+| [`SelectionRequest`] | `skills: Vec<String>`, `all: bool` (shared by remove/disable/enable)                                           |
 
 Notes:
 
@@ -64,7 +62,7 @@ Notes:
 ### Common operations
 
 ```rust
-use agents_skills::{AddRequest, DisableRequest, EnableRequest, RemoveRequest};
+use agents_skills::{AddRequest, SelectionRequest};
 
 // Pin a branch/tag/SHA with `reference` (None = default branch).
 manager.add(&AddRequest {
@@ -76,9 +74,9 @@ manager.add(&AddRequest {
 let skills = manager.list()?;
 let json = serde_json::to_string_pretty(&skills)?; // same shape as list --json
 
-manager.remove(&RemoveRequest  { skills: vec!["pdf".into()], ..Default::default() })?;
-manager.disable(&DisableRequest{ skills: vec!["pdf".into()], ..Default::default() })?;
-manager.enable(&EnableRequest  { skills: vec!["pdf".into()], ..Default::default() })?;
+manager.remove(&SelectionRequest  { skills: vec!["pdf".into()], ..Default::default() })?;
+manager.disable(&SelectionRequest { skills: vec!["pdf".into()], ..Default::default() })?;
+manager.enable(&SelectionRequest  { skills: vec!["pdf".into()], ..Default::default() })?;
 ```
 
 ## Context injection: [`ManagerBuilder`]
@@ -90,10 +88,11 @@ let manager = Manager::builder()
     .cwd("/tmp/project")
     .env_var("CLAUDE_CONFIG_DIR", "/tmp/claude")
     .probe_system_dirs(false) // skip system locations for hermetic tests
-    .build();
+    .build()?;
 ```
 
-`Manager::new()` equals `Manager::builder().build()`. Runnable examples:
+`Manager::new()` equals `Manager::builder().build()`. Both fail with an error
+when the platform cannot determine the home directory. Runnable examples:
 
 ```bash
 cargo run --example manage      # add → list → remove on a temp directory (no side effects)
@@ -123,9 +122,5 @@ leaves the machine.
 [`AgentStatus`]: https://docs.rs/agents-skills/latest/agents_skills/struct.AgentStatus.html
 [`LinkOutcome::Refused`]: https://docs.rs/agents-skills/latest/agents_skills/enum.LinkOutcome.html
 [`ListedSkill`]: https://docs.rs/agents-skills/latest/agents_skills/struct.ListedSkill.html
-[`RemoveRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.RemoveRequest.html
-[`RemoveOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.RemoveOutcome.html
-[`DisableRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.DisableRequest.html
-[`DisableOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.DisableOutcome.html
-[`EnableRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.EnableRequest.html
-[`EnableOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.EnableOutcome.html
+[`SelectionRequest`]: https://docs.rs/agents-skills/latest/agents_skills/struct.SelectionRequest.html
+[`SelectionOutcome`]: https://docs.rs/agents-skills/latest/agents_skills/struct.SelectionOutcome.html
