@@ -88,7 +88,7 @@ fn download_repo(
         match get(&archive_url(owner, repo, &form)) {
             Ok(bytes) => {
                 unpack_archive(&bytes, root)?;
-                return Ok(repo_root_of(root, repo));
+                return repo_root_of(root, repo);
             }
             Err(e) => {
                 // Only a 404 falls through to the next ref form (branch → tag);
@@ -154,38 +154,44 @@ fn unpack_archive(bytes: &[u8], root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// The repository root inside the unpacked archive, named after the repo.
+/// Consolidate the unpacked repository root directory, named after the repo.
 ///
 /// GitHub tarballs hold one top-level `<repo>-<ref>` directory; it is renamed
 /// to the plain repository name, so the skill directory's basename — the
 /// install slot a root-manifest skill gets — is meaningful. Any other layout
 /// (no or several top-level entries) is consolidated under `repo/` the same
-/// way.
-fn repo_root_of(root: &Path, repo: &str) -> PathBuf {
+/// way. Rename failures are propagated: silently continuing would leave the
+/// returned root missing and surface later as a misleading "no skill found".
+fn repo_root_of(root: &Path, repo: &str) -> Result<PathBuf> {
     let Ok(entries) = fs::read_dir(root) else {
-        return root.to_path_buf();
+        return Ok(root.to_path_buf());
     };
     let paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
     let target = root.join(repo);
     if paths.len() == 1 && paths[0].is_dir() {
         if paths[0] != target {
-            let _ = fs::rename(&paths[0], &target);
+            fs::rename(&paths[0], &target)
+                .map_err(|e| SkillsError::msg(format!("rename {}: {e}", paths[0].display())))?;
         }
-        return target;
+        return Ok(target);
     }
     if paths.is_empty() {
-        return root.to_path_buf();
+        return Ok(root.to_path_buf());
     }
-    if fs::create_dir(&target).is_ok() {
+    if fs::create_dir(&target).is_ok() || target.is_dir() {
         for path in &paths {
             let Some(name) = path.file_name() else {
                 continue;
             };
-            let _ = fs::rename(path, target.join(name));
+            fs::rename(path, target.join(name))
+                .map_err(|e| SkillsError::msg(format!("rename {}: {e}", path.display())))?;
         }
-        return target;
+        return Ok(target);
     }
-    root.to_path_buf()
+    Err(SkillsError::msg(format!(
+        "create {}: cannot create the repository root",
+        target.display()
+    )))
 }
 
 /// The skill matching [`fetch_skill`] promises, run on the unpacked tree.
@@ -313,7 +319,8 @@ fn retriable(e: &SkillsError) -> bool {
 /// Real HTTP GET used by default (injectable for tests).
 ///
 /// Uses the shared proxy-aware agent and retries transient failures. No
-/// authentication: only public repositories are supported.
+/// authentication: only public repositories are supported. The body is capped
+/// at [`MAX_TARBALL_BYTES`] so a runaway response cannot exhaust memory.
 fn http_get(url: &str) -> Result<Vec<u8>> {
     let attempt = || -> Result<Vec<u8>> {
         let mut resp = agent()
@@ -321,11 +328,23 @@ fn http_get(url: &str) -> Result<Vec<u8>> {
             .header("User-Agent", "agents-skills")
             .call()?;
         let mut buf = Vec::new();
-        resp.body_mut().as_reader().read_to_end(&mut buf)?;
+        resp.body_mut()
+            .as_reader()
+            .take(MAX_TARBALL_BYTES)
+            .read_to_end(&mut buf)?;
+        if buf.len() as u64 >= MAX_TARBALL_BYTES {
+            return Err(SkillsError::msg(format!(
+                "response from {url} exceeds the {} MiB limit",
+                MAX_TARBALL_BYTES / (1024 * 1024)
+            )));
+        }
         Ok(buf)
     };
     with_retry(3, attempt)
 }
+
+/// Largest accepted response body: 512 MiB, far above any real skill repo.
+const MAX_TARBALL_BYTES: u64 = 512 * 1024 * 1024;
 
 #[cfg(test)]
 mod tests {
