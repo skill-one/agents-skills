@@ -92,6 +92,21 @@ fn short_digest(name: &str) -> String {
     format!("{:08x}", hash as u32)
 }
 
+/// Make a skill name addressable: lowercase, every space replaced by `-`,
+/// `/` dropped, everything else kept verbatim (`&`, `.`, `_`, `:` survive) —
+/// the slug rule used by skills.sh. The slug is the last segment of an
+/// install id (`owner/repo/slug`); matching compares slugs, never raw names.
+pub fn slugify(name: &str) -> String {
+    name.to_lowercase()
+        .chars()
+        .filter_map(|c| match c {
+            ' ' => Some('-'),
+            '/' => None,
+            c => Some(c),
+        })
+        .collect()
+}
+
 /// Directories in `dir` that denote the same skill as `name`: their on-disk name
 /// normalizes to the same string.
 ///
@@ -180,13 +195,27 @@ pub fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
 
 /// Install a single skill into the canonical dir (the only place real files live).
 ///
-/// An already-installed skill — enabled or disabled — is **skipped**, never
-/// overwritten: `add` only ever adds. Update an installed skill with
+/// The installed directory keeps the source directory's own name, verbatim —
+/// while the skill's identity (what `list` reports and
+/// `remove`/`enable`/`disable` select by) is the slugified frontmatter
+/// `name`. An already-installed skill — enabled or disabled — is **skipped**,
+/// never overwritten: `add` only ever adds. Update an installed skill with
 /// `remove` + `add`.
 pub fn install_skill(skill: &Skill, env: &Env) -> InstallResult {
-    let skill_name = sanitize_name(&skill.name);
+    let slug = slugify(&skill.name);
     let canonical_base = canonical_skills_dir(env);
-    let canonical_dir = canonical_base.join(&skill_name);
+    let Some(slot) = skill.dir.file_name().and_then(|n| n.to_str()) else {
+        return InstallResult {
+            success: false,
+            canonical_path: skill.dir.clone(),
+            skipped: false,
+            error: Some(format!(
+                "Cannot determine an install directory name from \"{}\".",
+                skill.dir.display()
+            )),
+        };
+    };
+    let canonical_dir = canonical_base.join(slot);
 
     if !path_safe(&canonical_base, &canonical_dir) {
         return InstallResult {
@@ -213,7 +242,7 @@ pub fn install_skill(skill: &Skill, env: &Env) -> InstallResult {
     // by normalized name, so an adopted copy under an unnormalized directory name
     // (e.g. `PDF Master` for `pdf-master`) counts as installed too.
     let disabled_base = disabled_skills_dir(env);
-    if holds_skill(&canonical_base, &skill.name) || holds_skill(&disabled_base, &skill.name) {
+    if holds_skill(&canonical_base, &slug) || holds_skill(&disabled_base, &slug) {
         return InstallResult {
             success: true,
             canonical_path: canonical_dir,
@@ -225,7 +254,7 @@ pub fn install_skill(skill: &Skill, env: &Env) -> InstallResult {
     // Copy into a staging dir next to the destination (same filesystem), then
     // swap it in with a rename: agents see either nothing or the complete skill,
     // never a half-copied one. A failed copy leaves no trace.
-    let staging = canonical_base.join(format!(".incoming-{skill_name}-{}", unique_suffix()));
+    let staging = canonical_base.join(format!(".incoming-{slot}-{}", unique_suffix()));
     let install = (|| -> Result<()> {
         fs::create_dir_all(&staging)?;
         copy_directory(&skill.dir, &staging)?;
@@ -273,11 +302,17 @@ fn remove_path(p: &Path) {
 /// An installed skill (used by list).
 #[derive(Debug)]
 pub struct InstalledSkill {
-    /// Skill name — the on-disk directory name (the identity `remove` /
-    /// `disable` / `enable` operate on).
+    /// Skill slug — the slugified frontmatter `name`, the identity every
+    /// command (`remove`/`enable`/`disable`) selects by. Only valid skills
+    /// are listed.
     pub name: String,
+    /// The frontmatter `name` as declared — a display-only rendition of the
+    /// same skill (it may contain spaces and mixed case the slug folds away).
+    pub display_name: String,
     /// Skill description, collapsed onto a single line.
     pub description: String,
+    /// The skill's real on-disk directory (canonical or disabled dir).
+    pub path: PathBuf,
     /// The skill directory's creation time as Unix seconds, when the platform
     /// and filesystem record one.
     ///
@@ -329,51 +364,75 @@ fn list_skills_in(dir: &Path) -> Vec<InstalledSkill> {
             continue;
         }
         let skill_dir = entry.path();
-        if !skill_dir.join("SKILL.md").is_file() {
-            continue;
-        }
-        // Identity is the on-disk directory name; SKILL.md only contributes the
-        // description (best-effort). Internal skills stay hidden unless opted in.
+        // A directory is only a skill when its SKILL.md declares a non-empty
+        // `name`; everything else is invisible here. The identity is the
+        // slugified name; the raw name rides along for display.
+        // Internal skills stay hidden unless opted in.
         let Some(skill) = read_skill(&skill_dir, false) else {
             continue;
         };
-        let name = entry.file_name().to_string_lossy().into_owned();
         let description = one_line(&skill.description);
+        let installed_at = dir_created_secs(&skill_dir);
         out.push(InstalledSkill {
-            name,
+            name: slugify(&skill.name),
+            display_name: skill.name,
             description,
-            installed_at: dir_created_secs(&skill_dir),
+            path: skill_dir,
+            installed_at,
         });
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
     out
 }
 
-/// Scan the canonical dir, collecting installed skill directory names.
-pub fn scan_installed(env: &Env) -> Vec<String> {
-    scan_names_in(&canonical_skills_dir(env))
+/// Scan the canonical dir, collecting installed skills by reported name.
+pub fn scan_installed(env: &Env) -> Vec<ScannedSkill> {
+    scan_skills_in(&canonical_skills_dir(env))
 }
 
-/// Scan the disabled dir, collecting disabled skill directory names.
-pub fn scan_disabled(env: &Env) -> Vec<String> {
-    scan_names_in(&disabled_skills_dir(env))
+/// Scan the disabled dir, collecting disabled skills by reported name.
+pub fn scan_disabled(env: &Env) -> Vec<ScannedSkill> {
+    scan_skills_in(&disabled_skills_dir(env))
 }
 
-/// Collect the subdirectory names of `dir`, skipping dot-entries (staging
-/// leftovers like `.incoming-*` and the `.misc` quarantine dir are never skills).
-fn scan_names_in(dir: &Path) -> Vec<String> {
-    let mut v: Vec<String> = Vec::new();
+/// A scanned skill directory: the slug it reports and the slot it lives in.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ScannedSkill {
+    /// Reported name — the slugified frontmatter `name`, the identity
+    /// `remove`/`enable`/`disable` select by.
+    pub name: String,
+    /// On-disk directory name — the slot [`move_skill`] / [`remove_skill`]
+    /// operate on.
+    pub dir_name: String,
+}
+
+/// Collect the skill directories of `dir`, skipping dot-entries (staging
+/// leftovers like `.incoming-*` and the `.misc` quarantine dir are never
+/// skills). Only valid skills count — a directory whose SKILL.md does not
+/// declare a non-empty `name` is invisible here, too.
+/// Internal skills stay selectable: `remove`/`disable`/`enable` must reach
+/// what `list` hides.
+fn scan_skills_in(dir: &Path) -> Vec<ScannedSkill> {
+    let mut v: Vec<ScannedSkill> = Vec::new();
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             if entry.file_name().to_string_lossy().starts_with('.') {
                 continue;
             }
-            if entry.path().is_dir() {
-                v.push(entry.file_name().to_string_lossy().into_owned());
+            if !entry.path().is_dir() {
+                continue;
             }
+            let Some(skill) = read_skill(&entry.path(), true) else {
+                continue;
+            };
+            let dir_name = entry.file_name().to_string_lossy().into_owned();
+            v.push(ScannedSkill {
+                name: slugify(&skill.name),
+                dir_name,
+            });
         }
     }
-    v.sort();
+    v.sort_by(|a, b| a.name.cmp(&b.name));
     v
 }
 
@@ -381,7 +440,7 @@ fn scan_names_in(dir: &Path) -> Vec<String> {
 ///
 /// `to_enabled=true` moves `disabled-skills/<name>` → `skills/<name>` (enable);
 /// `to_enabled=false` moves `skills/<name>` → `disabled-skills/<name>` (disable).
-/// `name` is the **on-disk directory name** (as produced by [`scan_installed`]) and
+/// `name` is the **on-disk directory name** ([`ScannedSkill::dir_name`]) and
 /// is used as-is, so adopted skills whose name was never normalized still move.
 /// The target parent dir is created if needed.
 ///
@@ -808,6 +867,38 @@ mod tests {
         let installed = list_installed_skills(&env);
         assert_eq!(installed.len(), 1);
         assert_eq!(installed[0].name, "pdf");
+        assert_eq!(installed[0].path, tmp.path().join(".agents/skills/pdf"));
+    }
+
+    #[test]
+    fn list_reports_the_frontmatter_name_and_the_real_path() {
+        // An adopted skill keeps its original directory name, which can differ
+        // from the frontmatter `name`: list reports the frontmatter name (the
+        // name the user specified at install time) and the real directory.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        let dir = tmp.path().join(".agents/skills/PDF Master");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("SKILL.md"),
+            "---\nname: pdf-master\ndescription: d\n---\nbody",
+        )
+        .unwrap();
+
+        let installed = list_installed_skills(&env);
+        assert_eq!(installed.len(), 1);
+        assert_eq!(installed[0].name, "pdf-master");
+        assert_eq!(installed[0].path, dir);
+
+        // A manifest without a non-empty `name` is not a skill: the directory
+        // is never listed.
+        let dir = tmp.path().join(".agents/skills/acrobat");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("SKILL.md"), "---\ndescription: d\n---\nbody").unwrap();
+        fs::create_dir_all(tmp.path().join(".agents/skills/empty")).unwrap();
+        let installed = list_installed_skills(&env);
+        assert_eq!(installed.len(), 1);
+        assert_eq!(installed[0].name, "pdf-master");
     }
 
     #[test]
@@ -818,8 +909,14 @@ mod tests {
         let skill = write_skill(&src, "pdf");
         install_skill(&skill, &env);
 
-        let names = scan_installed(&env);
-        assert_eq!(names, vec!["pdf".to_string()]);
+        let skills = scan_installed(&env);
+        assert_eq!(
+            skills,
+            vec![ScannedSkill {
+                name: "pdf".to_string(),
+                dir_name: "pdf".to_string()
+            }]
+        );
     }
 
     #[test]
@@ -839,7 +936,13 @@ mod tests {
                 .exists()
         );
         assert!(scan_installed(&env).is_empty());
-        assert_eq!(scan_disabled(&env), vec!["pdf".to_string()]);
+        assert_eq!(
+            scan_disabled(&env),
+            vec![ScannedSkill {
+                name: "pdf".to_string(),
+                dir_name: "pdf".to_string()
+            }]
+        );
 
         // Enable: moves back.
         move_skill("pdf", true, &env).unwrap();

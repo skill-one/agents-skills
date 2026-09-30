@@ -7,6 +7,41 @@ the project adheres to [Semantic Versioning](https://semver.org/): while in
 
 For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## [Unreleased]
+
+### Changed
+
+- **(breaking)** The install argument is now the skills.sh-style id
+  `owner/repo/slug`; the legacy `owner/repo@<skill>` form is rejected with a
+  migration hint. The id's last segment is the skill's **slug** — its
+  SKILL.md frontmatter `name` slugified (lowercase, every space replaced by
+  `-`, `/` dropped, everything else kept verbatim). Matching compares
+  slugified names: the repository tree is searched for the first manifest
+  whose slugified `name` equals the requested slug (shallowest, then path
+  order); a `SKILL.md` at the repository root is an ordinary candidate and
+  installs the whole repository, and an unmatched slug is an error. API:
+  `Source.skill` is renamed to `Source.slug`, and `Source::slug()` is
+  replaced by `Source::id()` (the full `owner/repo/slug`).
+- **(breaking)** The slug is the single skill identity: the `name` reported
+  by `list` and the selectors of `remove`/`enable`/`disable` are the
+  slugified frontmatter `name` (the declared name rides along as display-only
+  `displayName` in `list` output). The installed directory, however, keeps
+  the matched skill directory's own name in the source repository, verbatim
+  (for a root manifest, the repository name; for a local add, the local
+  directory's own name) — it is no longer folded into a normalized slot
+  name.
+- The definition of a skill is now strict everywhere: a skill is a directory
+  whose `SKILL.md` frontmatter declares a non-empty `name` (the `description`
+  is optional and empty when absent). Directories without a manifest, with an
+  unparseable one, or missing the `name` are no longer discovered at all —
+  not by `list`, not by `remove`/`enable`/`disable`, not by the GitHub
+  selector, and a local `add` now rejects them with an error.
+- `list` (and `list --json`) gains a `path` field carrying the skill's real
+  on-disk directory, and a `displayName` field carrying the frontmatter
+  `name` as declared. `remove` / `disable` / `enable` select skills by the
+  slug (case-insensitive) while still operating on the real on-disk
+  directories; `Manager::skill_dir` now returns the scanned path.
+
 ## [0.25.0] — 2026-09-29
 
 ### Changed

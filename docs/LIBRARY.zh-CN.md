@@ -18,7 +18,7 @@ agents-skills = "0.21"
 use agents_skills::{AddRequest, Manager};
 
 let manager = Manager::new();
-let outcome = manager.add(&AddRequest::new("anthropics/skills@pdf"))?;
+let outcome = manager.add(&AddRequest::new("anthropics/skills/pdf"))?;
 println!("{} (skipped={})", outcome.skill.name, outcome.skipped);
 let skills = manager.list()?;
 ```
@@ -41,7 +41,7 @@ let skills = manager.list()?;
 
 | 结构体             | 字段                                                                                                 |
 | ------------------ | ---------------------------------------------------------------------------------------------------- |
-| [`AddRequest`]     | `source: String`（本地技能目录或 `owner/repo@<技能>`）、`reference: Option<String>`（分支/标签/SHA） |
+| [`AddRequest`]     | `source: String`（本地技能目录或 GitHub id `owner/repo/slug`）、`reference: Option<String>`（分支/标签/SHA） |
 | [`AgentRequest`]   | `agents: Vec<String>`（`"*"` 或名称，空 = 自动探测）、`unlink: bool`                                 |
 | [`RemoveRequest`]  | `skills: Vec<String>`、`all: bool`                                                                   |
 | [`DisableRequest`] | `skills: Vec<String>`、`all: bool`                                                                   |
@@ -65,7 +65,7 @@ use agents_skills::{AddRequest, DisableRequest, EnableRequest, RemoveRequest};
 
 // 用 reference 钉住分支/标签/SHA（None = 默认分支）
 manager.add(&AddRequest {
-    source: "anthropics/skills@pdf".into(),
+    source: "anthropics/skills/pdf".into(),
     reference: Some("v1.2".into()),
     ..Default::default()
 })?;

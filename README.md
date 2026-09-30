@@ -22,7 +22,7 @@ Also ships as an embeddable Rust library — see [docs/LIBRARY.md](docs/LIBRARY.
 
 ```bash
 agents-skills agent --link                  # link all installed agents
-agents-skills add anthropics/skills@pdf     # install one skill
+agents-skills add anthropics/skills/pdf    # install one skill
 agents-skills list                          # list installed skills
 ```
 
@@ -35,9 +35,9 @@ agent's skills directory at it with a symlink, so skills installed afterwards
 are visible to all agents immediately — no syncing.
 
 ```bash
-agents-skills add owner/repo@pdf            # install from GitHub
+agents-skills add owner/repo/slug          # install from GitHub
 agents-skills add ./my-skill                # install a local skill directory
-agents-skills add owner/repo@pdf --ref v1.2 # pin a branch, tag, or commit SHA
+agents-skills add owner/repo/slug --ref v1.2 # pin a branch, tag, or commit SHA
 agents-skills list --json                   # machine-readable output
 agents-skills remove pdf                    # remove a skill
 agents-skills disable pdf                   # disable (files kept) / enable: inverse
@@ -49,10 +49,15 @@ agents-skills agent --status                # show link status and private conte
 Key behaviors:
 
 - **Sources** — `add` installs exactly one named skill: either a local
-  directory that directly contains `SKILL.md`, or `owner/repo@<skill>` from
-  GitHub (matched on the skill directory name, case-insensitively; when no
-  directory matches, a root-level `SKILL.md` falls back to installing the
-  whole repository under the repository name). Without `--ref`
+  directory whose `SKILL.md` declares a `name`, or the GitHub id
+  `owner/repo/slug` (the id's last segment is the skill's slug — its `name`
+  slugified: lowercase, spaces as dashes, everything else verbatim; the first
+  manifest in the repository whose slugified `name` matches wins, and a
+  `SKILL.md` at the repository root installs the whole repository). The
+  installed directory keeps the source directory's own name, while the slug
+  is the identity `list` reports and `remove`/`enable`/`disable` select by.
+  Without
+  `--ref`
   the default branch is used. A remote install is a **single request** that
   downloads the repository tarball from `codeload.github.com` — the GitHub
   REST API is never used, so there is no API rate limit. Public repositories

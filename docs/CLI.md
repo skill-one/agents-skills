@@ -17,14 +17,22 @@ Install exactly one skill from a local directory or from GitHub.
 agents-skills add <source> [--ref <ref>]
 ```
 
-`<source>` is either a local skill directory (it must directly contain a
-`SKILL.md`) or `owner/repo@<skill>`, naming one skill on GitHub. A skill's
-name is always its directory name: the repository tree is searched for a
-directory containing `SKILL.md` whose basename matches `<skill>`
-case-insensitively (shallowest match wins). When no directory matches, a
-`SKILL.md` at the repository root falls back to installing the whole
-repository under the repository name. The frontmatter `name` field is
-ignored everywhere.
+`<source>` is either a local skill directory or the GitHub id
+`owner/repo/slug`, naming one skill on GitHub. In both cases a **skill** is a
+directory whose `SKILL.md` frontmatter declares a non-empty `name` — anything
+else is rejected as a local source, and never discovered remotely.
+
+The id's last segment is the skill's **slug**: its frontmatter `name`
+slugified (lowercase, every space replaced by `-`, `/` dropped, everything
+else kept verbatim — e.g. `agent development` → `agent-development`). Every
+`SKILL.md` in the repository tree is inspected and the first manifest whose
+slugified `name` equals the requested slug wins (shallowest, then path
+order). A `SKILL.md` at the repository root is an ordinary candidate: when it
+matches, the whole repository is the skill. The installed directory keeps
+the matched directory's own name in the source repository, verbatim — while
+the skill's identity, what `list` reports and `remove`/`enable`/`disable`
+select by, is the slug; the declared frontmatter `name` is shown alongside
+as a display rendition (`displayName` in `list --json`).
 
 | Option        | Description                                            |
 | ------------- | ------------------------------------------------------ |
@@ -32,8 +40,8 @@ ignored everywhere.
 
 ```bash
 agents-skills add ./my-skill                        # install a local skill
-agents-skills add anthropics/skills@pdf             # install one skill from GitHub
-agents-skills add anthropics/skills@pdf --ref v1.2  # pin a branch, tag, or full commit SHA
+agents-skills add anthropics/skills/pdf             # install one skill from GitHub
+agents-skills add anthropics/skills/pdf --ref v1.2  # pin a branch, tag, or full commit SHA
 ```
 
 Remote installs are a single request: the whole repository tarball is
@@ -52,7 +60,8 @@ installing to make the skill visible to agents.
 ## remove
 
 Remove skills from the canonical directory (and any parked copy under
-`disabled-skills`).
+`disabled-skills`). Skills are selected by the slug — the name `list`
+reports — matched case-insensitively.
 
 ```
 agents-skills remove [skills...] [--all]
@@ -90,8 +99,10 @@ docx Create and edit Word documents, including tables and headers.
 
 | Field         | Description                                                                                     |
 | ------------- | ----------------------------------------------------------------------------------------------- |
-| `name`        | Skill directory name — the identity every command uses; the frontmatter `name` field is ignored |
+| `name`        | The skill's slug — the frontmatter `name` slugified; the identity every command selects by. Directories whose manifest lacks a `name` are not skills and are never listed |
+| `displayName` | The frontmatter `name` as declared — display-only (may contain spaces and mixed case)           |
 | `description` | Skill description, collapsed onto a single line                                                 |
+| `path`        | The skill's real on-disk directory (canonical dir when enabled, `disabled-skills` when not)      |
 | `enabled`     | `true` in the canonical directory, `false` parked in `disabled-skills`                          |
 | `installedAt` | Skill directory creation time as Unix seconds (UTC), or `null` when unavailable                 |
 
@@ -101,6 +112,8 @@ Use `agent --status` for each agent's link status.
 
 `disable` moves a skill's directory into `disabled-skills/`, hiding it from all
 agents; `enable` moves it back. Files are preserved — lossless and reversible.
+Skills are selected by the slug — the name `list` reports — matched
+case-insensitively.
 
 ```
 agents-skills disable [skills...] [--all]

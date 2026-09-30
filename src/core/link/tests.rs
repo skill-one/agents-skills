@@ -201,7 +201,11 @@ fn link_agent_quarantines_non_skill_entries() {
     assert!(tmp.path().join(".claude/skills").is_symlink());
 
     // The quarantine dot-dir never shows up as an installed skill.
-    assert_eq!(scan_installed(&env), vec!["my-skill".to_string()]);
+    let scanned: Vec<String> = scan_installed(&env)
+        .iter()
+        .map(|s| s.name.clone())
+        .collect();
+    assert_eq!(scanned, vec!["my-skill".to_string()]);
     let listed: Vec<String> = list_installed_skills(&env)
         .into_iter()
         .map(|s| s.name)
@@ -218,7 +222,7 @@ fn link_agent_drops_conflict_across_name_normalization() {
     fs::create_dir_all(tmp.path().join(".agents/skills/pdf-master")).unwrap();
     fs::write(
         tmp.path().join(".agents/skills/pdf-master/SKILL.md"),
-        "canonical",
+        skill_frontmatter("pdf-master"),
     )
     .unwrap();
     let existing = tmp.path().join(".claude/skills/PDF Master");
@@ -238,10 +242,14 @@ fn link_agent_drops_conflict_across_name_normalization() {
     // Only the canonical copy survives.
     assert_eq!(
         fs::read_to_string(tmp.path().join(".agents/skills/pdf-master/SKILL.md")).unwrap(),
-        "canonical"
+        skill_frontmatter("pdf-master")
     );
     assert!(!tmp.path().join(".agents/skills/PDF Master").exists());
-    assert_eq!(scan_installed(&env), vec!["pdf-master".to_string()]);
+    let scanned: Vec<String> = scan_installed(&env)
+        .iter()
+        .map(|s| s.name.clone())
+        .collect();
+    assert_eq!(scanned, vec!["pdf-master".to_string()]);
 }
 
 #[test]
@@ -252,7 +260,11 @@ fn link_agent_keeps_only_one_of_two_sibling_names() {
     let env = env_at(&tmp);
     for dir in [".claude/skills/PDF Master", ".claude/skills/pdf-master"] {
         fs::create_dir_all(tmp.path().join(dir)).unwrap();
-        fs::write(tmp.path().join(dir).join("SKILL.md"), "x").unwrap();
+        fs::write(
+            tmp.path().join(dir).join("SKILL.md"),
+            skill_frontmatter("pdf-master"),
+        )
+        .unwrap();
     }
     let agent = get_agent("claude-code").unwrap();
 

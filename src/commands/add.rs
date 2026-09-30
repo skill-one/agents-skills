@@ -1,4 +1,4 @@
-//! add: install one skill (local directory or `owner/repo@<skill>`).
+//! add: install one skill (local directory or the GitHub id `owner/repo/slug`).
 //!
 //! Renders the [`Manager::add`] outcome; no business logic lives here.
 
@@ -39,15 +39,20 @@ fn fail_add(e: SkillsError) -> Result<()> {
 fn render(env: &Env, req: &AddRequest, outcome: &AddOutcome) {
     print_source(env, req, &outcome.source);
 
-    println!("Skill: {CYAN}{}{RESET}", outcome.skill.name);
+    // The slug is the skill's identity — what `remove`/`enable` address it by;
+    // the raw frontmatter name is shown alongside when it differs.
+    let slug = agents_skills::slugify(&outcome.skill.name);
+    let name_suffix = if outcome.skill.name.eq_ignore_ascii_case(&slug) {
+        String::new()
+    } else {
+        format!(" {DIM}(name: {}){RESET}", outcome.skill.name)
+    };
+    println!("Skill: {CYAN}{slug}{RESET}{name_suffix}");
     println!("{DIM}{}{RESET}", outcome.skill.description);
 
     println!();
     if outcome.skipped {
-        println!(
-            "{YELLOW}•{RESET} {} {DIM}skipped (already installed){RESET}",
-            outcome.skill.name
-        );
+        println!("{YELLOW}•{RESET} {slug} {DIM}skipped (already installed){RESET}");
         println!("{DIM}To replace an installed skill: remove it first, then add again.{RESET}");
     } else {
         println!(
@@ -66,7 +71,10 @@ fn print_source(env: &Env, req: &AddRequest, parsed: &agents_skills::Source) {
             .as_ref()
             .map(|p| shorten_path(p, env))
             .unwrap_or_default(),
-        SourceType::Github => format!("{}@{CYAN}{}{RESET}", parsed.slug(), parsed.skill),
+        SourceType::Github => {
+            let repo = format!("{}/{}", parsed.owner, parsed.repo);
+            format!("{repo}/{CYAN}{}{RESET}", parsed.slug)
+        }
     };
     let mut line = format!("Source: {main}");
     if let Some(r) = &req.reference {

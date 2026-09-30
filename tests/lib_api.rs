@@ -139,7 +139,7 @@ fn lib_missing_local_path_returns_error() {
 #[test]
 fn lib_list_json_shape() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let (manager, _home) = manager_at(&tmp);
+    let (manager, home) = manager_at(&tmp);
 
     let src = write_skill_source(tmp.path(), "pdf", "pdf");
     manager
@@ -151,10 +151,14 @@ fn lib_list_json_shape() {
 
     let listed = manager.list().unwrap();
     assert_eq!(listed[0].name, "pdf");
+    assert_eq!(listed[0].display_name, "pdf");
     assert_eq!(listed[0].description, "does pdf");
+    assert_eq!(listed[0].path, home.join(".agents/skills/pdf"));
     let json = serde_json::to_string_pretty(&listed).unwrap();
     assert!(json.contains("\"name\": \"pdf\""));
+    assert!(json.contains("\"displayName\": \"pdf\""));
     assert!(json.contains("\"description\": \"does pdf\""));
+    assert!(json.contains("\"path\":"));
     assert!(json.contains("\"enabled\": true"));
     assert!(json.contains("\"installedAt\""));
 }
@@ -545,5 +549,105 @@ fn lib_remove_deletes_both_copies_under_either_name() {
     assert_eq!(outcome.removed, vec!["pdf-master".to_string()]);
     assert!(!home.join(".agents/skills/pdf-master").exists());
     assert!(!home.join(".agents/disabled-skills/PDF Master").exists());
+    assert!(manager.list().unwrap().is_empty());
+}
+
+#[test]
+fn lib_selects_skills_by_frontmatter_name_over_dir_name() {
+    // An adopted skill whose directory name (`acrobat`) differs from its
+    // frontmatter `name` (`pdf`): every command selects it by the frontmatter
+    // name — the name `list` reports — while the moves hit the real directory.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let (manager, home) = manager_at(&tmp);
+    write_skill_source(&home, ".agents/skills/acrobat", "pdf");
+
+    let listed = manager.list().unwrap();
+    assert_eq!(listed[0].name, "pdf");
+    assert_eq!(listed[0].path, home.join(".agents/skills/acrobat"));
+
+    let disabled = manager
+        .disable(&DisableRequest {
+            skills: vec!["pdf".to_string()],
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(disabled.disabled, vec!["pdf".to_string()]);
+    assert!(
+        home.join(".agents/disabled-skills/acrobat/SKILL.md")
+            .exists()
+    );
+
+    let enabled = manager
+        .enable(&EnableRequest {
+            skills: vec!["pdf".to_string()],
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(enabled.enabled, vec!["pdf".to_string()]);
+    assert!(home.join(".agents/skills/acrobat/SKILL.md").exists());
+
+    let removed = manager
+        .remove(&RemoveRequest {
+            skills: vec!["pdf".to_string()],
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(removed.removed, vec!["pdf".to_string()]);
+    assert!(!home.join(".agents/skills/acrobat").exists());
+    assert!(manager.list().unwrap().is_empty());
+}
+
+#[test]
+fn lib_slug_identity_with_verbatim_install_slot() {
+    // A skill whose frontmatter name has spaces and mixed case: the install
+    // slot keeps the source directory's own name, verbatim, while the slug is
+    // the identity — what `list` reports and disable/remove select by.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let (manager, home) = manager_at(&tmp);
+    let src = write_skill_source(tmp.path(), "PDF Master", "PDF Master");
+
+    let outcome = manager
+        .add(&AddRequest {
+            source: src.display().to_string(),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(outcome.skill.name, "PDF Master");
+
+    // The install slot is the source directory's own name.
+    assert!(home.join(".agents/skills/PDF Master/SKILL.md").exists());
+
+    let listed = manager.list().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].name, "pdf-master");
+    assert_eq!(listed[0].display_name, "PDF Master");
+    assert_eq!(listed[0].path, home.join(".agents/skills/PDF Master"));
+
+    // disable/enable/remove all select by the slug, on the real directory.
+    manager
+        .disable(&DisableRequest {
+            skills: vec!["pdf-master".to_string()],
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(
+        home.join(".agents/disabled-skills/PDF Master/SKILL.md")
+            .exists()
+    );
+
+    manager
+        .enable(&EnableRequest {
+            skills: vec!["pdf-master".to_string()],
+            ..Default::default()
+        })
+        .unwrap();
+
+    let removed = manager
+        .remove(&RemoveRequest {
+            skills: vec!["pdf-master".to_string()],
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(removed.removed, vec!["pdf-master".to_string()]);
     assert!(manager.list().unwrap().is_empty());
 }

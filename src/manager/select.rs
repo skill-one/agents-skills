@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::core::agents::{AGENTS, Agent, Env, detect_installed_agents, get_agent};
-use crate::core::install::{move_skill, sanitize_name};
+use crate::core::install::{ScannedSkill, move_skill, sanitize_name};
 use crate::error::{Result, SkillsError};
 
 /// Resolve agent selection: `"*"` → all; names → validated; empty → auto-detect + universal.
@@ -32,16 +32,17 @@ pub(crate) fn resolve_target_agents(names: &[String], env: &Env) -> Result<Vec<&
     Ok(detect_installed_agents(env))
 }
 
-/// Resolve requested names against available name sets, matching case-insensitively on
-/// sanitized names. `sources` are consulted in order and the first available original
-/// name wins — put higher-priority sources first.
-fn resolve_names(requested: &[String], sources: &[&[String]]) -> Vec<String> {
-    let mut identity: HashMap<String, String> = HashMap::new();
+/// Resolve requested names against scanned skills, matching case-insensitively
+/// on the reported name (the SKILL.md frontmatter `name`). `sources` are
+/// consulted in order and the first skill under a folded key wins — put
+/// higher-priority sources first.
+fn resolve_names(requested: &[String], sources: &[&[ScannedSkill]]) -> Vec<ScannedSkill> {
+    let mut identity: HashMap<String, ScannedSkill> = HashMap::new();
     for source in sources {
-        for folder in *source {
+        for skill in *source {
             identity
-                .entry(sanitize_name(folder))
-                .or_insert_with(|| folder.clone());
+                .entry(sanitize_name(&skill.name))
+                .or_insert_with(|| skill.clone());
         }
     }
     let mut matched = HashSet::new();
@@ -50,20 +51,22 @@ fn resolve_names(requested: &[String], sources: &[&[String]]) -> Vec<String> {
             matched.insert(hit.clone());
         }
     }
-    let mut v: Vec<String> = matched.into_iter().collect();
-    v.sort();
+    let mut v: Vec<ScannedSkill> = matched.into_iter().collect();
+    v.sort_by(|a, b| a.name.cmp(&b.name));
     v
 }
 
 /// Core enable/disable: resolve requested names, classify idempotent/missing, and move
 /// dirs. Returns `(selected, already, missing)` where `selected` were actually moved.
 ///
-/// `from_set` holds names in the current state (source of the move); `target_set` holds
-/// names in the target state (to detect idempotent no-ops).
+/// `from_set` holds skills in the current state (source of the move); `target_set`
+/// holds skills in the target state (to detect idempotent no-ops). Both selection
+/// and the reported names use the skills' reported (frontmatter) names; the moves
+/// themselves happen on the real on-disk directories.
 pub(crate) fn set_enabled_state(
     requested: &[String],
-    from_set: &[String],
-    target_set: &[String],
+    from_set: &[ScannedSkill],
+    target_set: &[ScannedSkill],
     to_enabled: bool,
     env: &Env,
 ) -> Result<(Vec<String>, Vec<String>, Vec<String>)> {
@@ -74,13 +77,13 @@ pub(crate) fn set_enabled_state(
     for name in requested {
         if selected
             .iter()
-            .any(|s| sanitize_name(s) == sanitize_name(name))
+            .any(|s| sanitize_name(&s.name) == sanitize_name(name))
         {
             continue;
         }
         if target_set
             .iter()
-            .any(|d| sanitize_name(d) == sanitize_name(name))
+            .any(|d| sanitize_name(&d.name) == sanitize_name(name))
         {
             already.push(name.clone());
         } else {
@@ -92,18 +95,19 @@ pub(crate) fn set_enabled_state(
     missing.sort();
     missing.dedup();
 
-    for name in &selected {
-        move_skill(name, to_enabled, env)?;
+    for skill in &selected {
+        move_skill(&skill.dir_name, to_enabled, env)?;
     }
 
-    Ok((selected, already, missing))
+    let moved = selected.iter().map(|s| s.name.clone()).collect();
+    Ok((moved, already, missing))
 }
 
-/// Resolve skill names to remove: match by sanitized name.
+/// Resolve skill names to remove: match by reported (frontmatter) name.
 pub(crate) fn resolve_to_remove(
     requested: &[String],
-    installed: &[String],
-    disabled: &[String],
-) -> Vec<String> {
+    installed: &[ScannedSkill],
+    disabled: &[ScannedSkill],
+) -> Vec<ScannedSkill> {
     resolve_names(requested, &[installed, disabled])
 }

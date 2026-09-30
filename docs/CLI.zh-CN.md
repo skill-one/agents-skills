@@ -16,11 +16,19 @@
 agents-skills add <source> [--ref <ref>]
 ```
 
-`<source>` 要么是本地技能目录（必须直接包含 `SKILL.md`），要么是
-`owner/repo@<技能>`，指定 GitHub 上的一个技能。技能名一律取目录名：在仓库
-tree 中查找包含 `SKILL.md` 的目录，其 basename 与 `<技能>` 大小写不敏感匹配
-（最浅的匹配优先）。若没有目录匹配，则回退到仓库根目录的 `SKILL.md`，
-以仓库名作为技能名安装整个仓库。frontmatter 中的 `name` 字段在任何流程中都被忽略。
+`<source>` 要么是本地技能目录，要么是 GitHub id `owner/repo/slug`，指定 GitHub
+上的一个技能。两种情况下，**技能**都是指其 `SKILL.md` frontmatter 声明了非空
+`name` 的目录（`description` 可选）——其他情况作为本地来源会被拒绝，远程发现也
+不会命中。
+
+id 的最后一段是技能的 **slug**：由 frontmatter `name` slug 化而来（小写、每个
+空格替换为 `-`、`/` 删除、其余字符原样保留——如 `agent development` →
+`agent-development`）。会检查仓库 tree 中的每个 `SKILL.md`，第一个 slug 化
+`name` 与请求 slug 相等的 manifest 生效（最浅优先、路径优先）。仓库根目录的
+`SKILL.md` 也是普通候选：命中时安装整个仓库。安装的目录保留被命中目录在源仓库
+中的原始目录名——而技能的身份（`list` 报告、`remove`/`enable`/`disable` 选择的
+依据）是 slug；frontmatter 中的原始 `name` 仅作展示（`list --json` 中的
+`displayName`）。
 
 | 选项          | 说明                                          |
 | ------------- | --------------------------------------------- |
@@ -28,8 +36,8 @@ tree 中查找包含 `SKILL.md` 的目录，其 basename 与 `<技能>` 大小�
 
 ```bash
 agents-skills add ./my-skill                        # 安装本地技能
-agents-skills add anthropics/skills@pdf             # 从 GitHub 安装一个技能
-agents-skills add anthropics/skills@pdf --ref v1.2  # 指定分支、标签或完整 commit SHA
+agents-skills add anthropics/skills/pdf             # 从 GitHub 安装一个技能
+agents-skills add anthropics/skills/pdf --ref v1.2  # 指定分支、标签或完整 commit SHA
 ```
 
 远程安装是单次请求：从 `codeload.github.com` 下载整个仓库的 tarball，解包到
@@ -43,7 +51,8 @@ URL、子路径、GitLab/SSH、HTTPS 压缩包）均会被拒绝，报错会指�
 
 ## remove
 
-从规范目录移除技能（同时移除 `disabled-skills` 中停放的副本）。
+从规范目录移除技能（同时移除 `disabled-skills` 中停放的副本）。技能按 slug
+选择——即 `list` 报告的名字——大小写不敏感匹配。
 
 ```
 agents-skills remove [skills...] [--all]
@@ -81,8 +90,10 @@ docx Create and edit Word documents, including tables and headers.
 
 | 字段          | 说明                                                               |
 | ------------- | ------------------------------------------------------------------ |
-| `name`        | 技能目录名——所有命令使用的身份；frontmatter 的 `name` 字段会被忽略 |
+| `name`        | 技能的 slug——frontmatter `name` slug 化后的形式，所有命令选择的身份。manifest 缺失 `name` 的目录不是技能，不会被列出 |
+| `displayName` | frontmatter 中声明的原始 `name`——仅作展示（可能含空格与大小写）  |
 | `description` | 技能描述，已规整为单行                                             |
+| `path`        | 技能的真实磁盘目录（启用时在规范目录，禁用时在 `disabled-skills`）  |
 | `enabled`     | 在规范目录中为 `true`，停放在 `disabled-skills` 中为 `false`       |
 | `installedAt` | 技能目录创建时间（Unix 秒，UTC），不可用时为 `null`                |
 
@@ -91,7 +102,8 @@ docx Create and edit Word documents, including tables and headers.
 ## disable / enable
 
 `disable` 把技能目录移入 `disabled-skills/`，对所有 agent 隐藏；`enable` 移回。
-文件完整保留——无损、可逆。
+文件完整保留——无损、可逆。技能按 slug 选择——即 `list` 报告的名字——大小写
+不敏感匹配。
 
 ```
 agents-skills disable [skills...] [--all]

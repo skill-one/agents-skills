@@ -41,8 +41,15 @@ fn print_skill(skill: &ListedSkill, manager: &Manager) {
     } else {
         format!("{YELLOW}disabled{RESET}")
     };
+    // The slug is the identity; show the declared frontmatter name alongside
+    // when it differs.
+    let name_suffix = if skill.display_name.eq_ignore_ascii_case(&skill.name) {
+        String::new()
+    } else {
+        format!(" {DIM}(name: {}){RESET}", skill.display_name)
+    };
     println!(
-        "{CYAN}{}{RESET} {DIM}{}{RESET}",
+        "{CYAN}{}{RESET}{name_suffix} {DIM}{}{RESET}",
         skill.name,
         truncate(&skill.description, DESCRIPTION_MAX)
     );

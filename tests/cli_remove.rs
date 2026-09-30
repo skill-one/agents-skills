@@ -105,10 +105,18 @@ fn remove_clears_a_skill_present_in_both_dirs() {
     // spellings: both dirs and both names must be matched.
     let canonical = p.path().join(".agents/skills/pdf-master");
     std::fs::create_dir_all(&canonical).unwrap();
-    std::fs::write(canonical.join("SKILL.md"), "---\nname: pdf-master\n---\n").unwrap();
+    std::fs::write(
+        canonical.join("SKILL.md"),
+        "---\nname: pdf-master\ndescription: d\n---\n",
+    )
+    .unwrap();
     let parked = p.path().join(".agents/disabled-skills/PDF Master");
     std::fs::create_dir_all(&parked).unwrap();
-    std::fs::write(parked.join("SKILL.md"), "---\nname: PDF Master\n---\n").unwrap();
+    std::fs::write(
+        parked.join("SKILL.md"),
+        "---\nname: PDF Master\ndescription: d\n---\n",
+    )
+    .unwrap();
 
     p.skills()
         .args(["remove", "--all"])

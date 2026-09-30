@@ -3,16 +3,20 @@
 //! Exactly two forms are accepted:
 //!
 //! - **Local skill directory** — `./my-skill`, `/abs/path/skill`, `C:\skill`:
-//!   a directory that directly contains a `SKILL.md`.
-//! - **GitHub skill** — `owner/repo@<skill>`: one named skill from a GitHub
-//!   repository. `<skill>` is a skill **directory name** — a directory
-//!   directly containing `SKILL.md`, matched case-insensitively (shallowest
-//!   wins). When no directory matches, a `SKILL.md` at the repository root
-//!   falls back to the whole repository as the skill, named after the
-//!   repository. The git ref (branch / tag / commit SHA) is orthogonal
+//!   a directory that directly contains a `SKILL.md` whose frontmatter
+//!   declares a non-empty `name` (the description is optional).
+//! - **GitHub skill id** — `owner/repo/slug`: one named skill from a GitHub
+//!   repository. The first two segments name the hosting repository; the last
+//!   segment is the skill's **slug** — its SKILL.md frontmatter `name`
+//!   slugified (lowercase, spaces → `-`, `/` dropped, everything else kept
+//!   verbatim). The repository tree is searched for the first manifest whose
+//!   slugified `name` equals the requested slug; a `SKILL.md` at the
+//!   repository root is an ordinary candidate, so a match there installs the
+//!   whole repository. The git ref (branch / tag / commit SHA) is orthogonal
 //!   to the source string and supplied separately.
 //!
-//! Everything else is rejected with a hint: bare `owner/repo`, full GitHub URLs,
+//! Everything else is rejected with a hint: bare `owner/repo`, the legacy
+//! `owner/repo@<skill>` form, longer repository paths, full GitHub URLs,
 //! GitLab / SSH / generic git URLs, and arbitrary HTTPS downloads.
 
 use std::path::{Path, PathBuf};
@@ -24,7 +28,7 @@ use crate::error::{Result, SkillsError};
 pub enum SourceType {
     /// A skill directory on the local filesystem.
     Local,
-    /// A skill in a GitHub repository, selected with `owner/repo@<skill>`.
+    /// A skill in a GitHub repository, selected with `owner/repo/slug`.
     Github,
 }
 
@@ -43,14 +47,14 @@ pub struct Source {
     pub owner: String,
     /// GitHub repository name (without a trailing `.git`).
     pub repo: String,
-    /// Skill selector: the skill's directory name, case-insensitive.
-    pub skill: String,
+    /// Skill selector: the skill's slug — the id's last segment.
+    pub slug: String,
 }
 
 impl Source {
-    /// `owner/repo` slug for messages (GitHub sources only).
-    pub fn slug(&self) -> String {
-        format!("{}/{}", self.owner, self.repo)
+    /// The full `owner/repo/slug` id (GitHub sources only).
+    pub fn id(&self) -> String {
+        format!("{}/{}/{}", self.owner, self.repo, self.slug)
     }
 }
 
@@ -73,15 +77,20 @@ fn is_local_path(input: &str) -> bool {
 fn unsupported(input: &str, hint: &str) -> SkillsError {
     SkillsError::msg(format!(
         "Unsupported source: \"{input}\". {hint} Supported forms: \
-         `owner/repo@<skill>` (GitHub) or a local skill directory containing SKILL.md."
+         `owner/repo/slug` (GitHub) or a local skill directory containing SKILL.md."
     ))
 }
 
-/// Parse the GitHub shorthand `owner/repo@<skill>`.
+/// Whether `s` is a usable id segment: non-empty and not a dot path component.
+fn valid_segment(s: &str) -> bool {
+    !s.is_empty() && s != "." && s != ".."
+}
+
+/// Parse the GitHub skill id `owner/repo/slug`.
 ///
-/// `Ok(None)` when the input is not a shorthand (contains no `/`); every other
-/// malformed shorthand is an explicit error — never silently accepted.
-fn parse_github_shorthand(input: &str) -> Result<Option<Source>> {
+/// `Ok(None)` when the input is not an id candidate (fewer than two `/`);
+/// every other malformed id is an explicit error — never silently accepted.
+fn parse_github_id(input: &str) -> Result<Option<Source>> {
     if input.contains(':') {
         // SSH (`git@host:…`) and anything URL-like with a scheme.
         return Err(unsupported(
@@ -92,29 +101,33 @@ fn parse_github_shorthand(input: &str) -> Result<Option<Source>> {
     if input.starts_with('.') || input.starts_with('/') {
         return Ok(None);
     }
-    let Some((owner, rest)) = input.split_once('/') else {
+    let segments: Vec<&str> = input.split('/').collect();
+    if segments.len() < 2 {
         return Ok(None);
-    };
-    if owner.is_empty() || rest.is_empty() {
-        return Err(unsupported(input, "Expected `owner/repo@<skill>`."));
     }
-    // A second slash means a repository subpath (with or without `@skill`).
-    if rest.contains('/') {
-        let repo = rest.split(['/', '@']).next().unwrap_or(rest);
-        return Err(SkillsError::msg(format!(
-            "Repository subpaths are no longer accepted: \"{input}\". \
-             Select the skill by name instead: `{owner}/{repo}@<skill>`."
-        )));
+    if segments.len() == 2 {
+        let hint = if input.contains('@') {
+            "The `owner/repo@<skill>` form is no longer supported; install by \
+             id instead: `owner/repo/<slug>`."
+        } else {
+            "An id has three segments: `owner/repo/<slug>`."
+        };
+        return Err(unsupported(input, hint));
     }
-
-    let Some((repo, skill)) = rest.split_once('@') else {
-        return Err(SkillsError::msg(format!(
-            "Missing skill selector: \"{input}\" installs a whole repository. \
-             Name the skill explicitly: `{owner}/{rest}@<skill>`."
-        )));
-    };
-    if repo.is_empty() || skill.is_empty() {
-        return Err(unsupported(input, "Expected `owner/repo@<skill>`."));
+    if segments.len() > 3 {
+        return Err(unsupported(
+            input,
+            "An id has exactly three segments: `owner/repo/<slug>`.",
+        ));
+    }
+    let owner = segments[0];
+    let repo = segments[1];
+    let slug = segments[2];
+    if !valid_segment(owner) || !valid_segment(repo) || !valid_segment(slug) {
+        return Err(unsupported(
+            input,
+            "Expected `owner/repo/<slug>` — no segment may be empty, `.` or `..`.",
+        ));
     }
 
     Ok(Some(Source {
@@ -123,7 +136,7 @@ fn parse_github_shorthand(input: &str) -> Result<Option<Source>> {
         local_path: None,
         owner: owner.to_string(),
         repo: repo.strip_suffix(".git").unwrap_or(repo).to_string(),
-        skill: skill.to_string(),
+        slug: slug.to_string(),
     }))
 }
 
@@ -132,7 +145,7 @@ pub fn parse_source(input: &str) -> Result<Source> {
     let input = input.trim();
     if input.is_empty() {
         return Err(SkillsError::msg(
-            "Empty source. Expected `owner/repo@<skill>` or a local skill directory.",
+            "Empty source. Expected `owner/repo/slug` or a local skill directory.",
         ));
     }
 
@@ -149,7 +162,7 @@ pub fn parse_source(input: &str) -> Result<Source> {
             local_path: Some(resolved),
             owner: String::new(),
             repo: String::new(),
-            skill: String::new(),
+            slug: String::new(),
         });
     }
 
@@ -161,11 +174,11 @@ pub fn parse_source(input: &str) -> Result<Source> {
         ));
     }
 
-    if let Some(s) = parse_github_shorthand(input)? {
+    if let Some(s) = parse_github_id(input)? {
         return Ok(s);
     }
 
-    Err(unsupported(input, "Expected `owner/repo@<skill>`."))
+    Err(unsupported(input, "Expected `owner/repo/slug`."))
 }
 
 #[cfg(test)]
@@ -193,39 +206,58 @@ mod tests {
     }
 
     #[test]
-    fn github_shorthand_with_skill() {
-        let s = parse_source("acme/skills@pdf").unwrap();
+    fn github_id_parses_into_three_segments() {
+        let s = parse_source("acme/skills/pdf").unwrap();
         assert_eq!(s.ty, SourceType::Github);
         assert_eq!(s.owner, "acme");
         assert_eq!(s.repo, "skills");
-        assert_eq!(s.skill, "pdf");
-        assert_eq!(s.slug(), "acme/skills");
+        assert_eq!(s.slug, "pdf");
+        assert_eq!(s.id(), "acme/skills/pdf");
     }
 
     #[test]
-    fn github_shorthand_strips_git_suffix() {
-        let s = parse_source("acme/skills.git@pdf").unwrap();
+    fn github_id_strips_git_suffix() {
+        let s = parse_source("acme/skills.git/pdf").unwrap();
         assert_eq!(s.repo, "skills");
     }
 
     #[test]
-    fn skill_selector_may_contain_at() {
-        // Split on the first '@'; a '@' inside the skill name is kept.
-        let s = parse_source("acme/skills@pdf@v2").unwrap();
-        assert_eq!(s.skill, "pdf@v2");
+    fn slug_keeps_punctuation_verbatim() {
+        // `@ & . _` are ordinary slug characters; only the id's segment
+        // structure is special (`:` is rejected as URL/SSH-like).
+        for slug in ["pdf@v2", "c++.net&a&b", "my_skill"] {
+            let s = parse_source(&format!("acme/skills/{slug}")).unwrap();
+            assert_eq!(s.slug, slug);
+        }
     }
 
     #[test]
     fn bare_owner_repo_is_rejected() {
         let e = parse_source("acme/skills").unwrap_err();
-        assert!(e.to_string().contains("Missing skill selector"));
-        assert!(e.to_string().contains("acme/skills@<skill>"));
+        assert!(e.to_string().contains("three segments"), "{e}");
+        assert!(e.to_string().contains("owner/repo/<slug>"), "{e}");
     }
 
     #[test]
-    fn subpath_shorthand_is_rejected() {
+    fn legacy_at_syntax_is_rejected_with_a_migration_hint() {
+        let e = parse_source("acme/skills@pdf").unwrap_err();
+        assert!(e.to_string().contains("no longer supported"), "{e}");
+        assert!(e.to_string().contains("owner/repo/<slug>"), "{e}");
+    }
+
+    #[test]
+    fn longer_paths_are_rejected() {
         let e = parse_source("acme/skills/skills/pdf").unwrap_err();
-        assert!(e.to_string().contains("subpaths"));
+        assert!(e.to_string().contains("exactly three segments"), "{e}");
+    }
+
+    #[test]
+    fn dot_or_empty_segments_are_rejected() {
+        assert!(parse_source("acme//pdf").is_err());
+        assert!(parse_source("acme/skills/.").is_err());
+        // A leading `..` is a local relative path, not an id.
+        let s = parse_source("../skills/pdf").unwrap();
+        assert_eq!(s.ty, SourceType::Local);
     }
 
     #[test]

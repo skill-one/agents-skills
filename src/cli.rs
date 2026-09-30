@@ -24,7 +24,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Add a skill (local directory or owner/repo@<skill>)
+    /// Add a skill (local directory or owner/repo/slug)
     Add(AddArgs),
     /// Remove installed skills
     Remove(RemoveArgs),
@@ -40,7 +40,7 @@ pub enum Command {
 
 #[derive(Debug, Args)]
 pub struct AddArgs {
-    /// A local skill directory, or `owner/repo@<skill>` (one skill on GitHub)
+    /// A local skill directory, or the GitHub id `owner/repo/slug`
     #[arg(required = true)]
     pub source: String,
     /// Pin a branch, tag, or full commit SHA (GitHub sources only)
@@ -131,7 +131,7 @@ pub fn show_banner() {
     println!("{DIM}Agents skills installer and manager{RESET}");
     println!();
     println!(
-        "  {DIM}${RESET} {TEXT}agents-skills add {DIM}owner/repo@<skill>{RESET}  {DIM}Add a skill{RESET}"
+        "  {DIM}${RESET} {TEXT}agents-skills add {DIM}owner/repo/slug{RESET}  {DIM}Add a skill{RESET}"
     );
     println!(
         "  {DIM}${RESET} {TEXT}agents-skills remove{RESET}               {DIM}Remove installed skills{RESET}"
@@ -157,6 +157,6 @@ pub fn show_banner() {
         "  {DIM}${RESET} {TEXT}agents-skills enable{RESET}             {DIM}Re-enable disabled skills{RESET}"
     );
     println!();
-    println!("{DIM}try:{RESET} agents-skills add anthropics/skills@pdf");
+    println!("{DIM}try:{RESET} agents-skills add anthropics/skills/pdf");
     println!();
 }

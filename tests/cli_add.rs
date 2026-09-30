@@ -22,16 +22,18 @@ fn add_local_path_installs_to_canonical() {
 }
 
 #[test]
-fn add_uses_the_directory_name_not_frontmatter_name() {
+fn add_keeps_the_source_directory_name_and_reports_the_slug() {
     let p = TestProject::new();
-    // The directory is `my-skill`; the frontmatter `name` differs and is ignored.
+    // The installed directory keeps the source directory's own name; the
+    // reported skill identity is the slug (the slugified frontmatter name),
+    // which remove/enable address it by.
     let src = p.write_skill_source("my-skill", "pdf");
 
     p.skills()
         .args(["add", src.to_str().unwrap()])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Skill:").and(predicate::str::contains("my-skill")));
+        .stdout(predicate::str::contains("Skill:").and(predicate::str::contains("pdf")));
 
     p.assert_exists(".agents/skills/my-skill/SKILL.md");
     p.assert_absent(".agents/skills/pdf");
@@ -114,14 +116,27 @@ fn add_local_dir_without_skill_md_is_rejected() {
 fn bare_owner_repo_is_rejected_without_network() {
     let p = TestProject::new();
 
-    // The missing `@<skill>` is a parse error, reported before any network I/O.
+    // A two-segment id is a parse error, reported before any network I/O.
     p.skills()
         .args(["add", "acme/skills"])
         .assert()
         .failure()
         .code(1)
-        .stdout(predicate::str::contains("Missing skill selector"))
-        .stdout(predicate::str::contains("acme/skills@<skill>"));
+        .stdout(predicate::str::contains("three segments"))
+        .stdout(predicate::str::contains("owner/repo/<slug>"));
+}
+
+#[test]
+fn legacy_at_syntax_is_rejected_without_network() {
+    let p = TestProject::new();
+
+    p.skills()
+        .args(["add", "acme/skills@pdf"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("no longer supported"))
+        .stdout(predicate::str::contains("owner/repo/<slug>"));
 }
 
 #[test]
@@ -133,7 +148,7 @@ fn subpath_and_url_sources_are_rejected() {
         .assert()
         .failure()
         .code(1)
-        .stdout(predicate::str::contains("subpaths"));
+        .stdout(predicate::str::contains("exactly three segments"));
 
     p.skills()
         .args(["add", "https://github.com/acme/skills"])

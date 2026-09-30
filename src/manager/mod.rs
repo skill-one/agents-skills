@@ -5,15 +5,12 @@
 
 use std::path::PathBuf;
 
-use crate::core::agents::{
-    AGENTS, Env, canonical_skills_dir, config_home, disabled_skills_dir, home, is_installed,
-    is_native,
-};
+use crate::core::agents::{AGENTS, Env, config_home, home, is_installed, is_native};
 use crate::core::discover::{Skill, read_skill};
 use crate::core::github::fetch_skill;
 use crate::core::install::{
-    install_skill, list_disabled_skills, list_installed_skills, remove_skill, scan_disabled,
-    scan_installed,
+    ScannedSkill, install_skill, list_disabled_skills, list_installed_skills, remove_skill,
+    scan_disabled, scan_installed,
 };
 use crate::core::link::{is_agent_linked, link_agent, private_content, unlink_agent};
 use crate::core::source::{SourceType, parse_source};
@@ -29,6 +26,11 @@ mod select;
 #[cfg(test)]
 mod tests;
 mod types;
+
+/// The reported (frontmatter) names of scanned skills, for outcome hint lists.
+fn reported_names(skills: &[ScannedSkill]) -> Vec<String> {
+    skills.iter().map(|s| s.name.clone()).collect()
+}
 
 /// Skill manager: carries injectable context and runs add/list/remove/enable/disable.
 ///
@@ -51,7 +53,7 @@ mod types;
 ///     .cwd("/tmp/project")
 ///     .build();
 ///
-/// let req = AddRequest::new("anthropics/skills@pdf");
+/// let req = AddRequest::new("anthropics/skills/pdf");
 /// let _ = (real, sandboxed, req);
 /// ```
 pub struct Manager {
@@ -95,19 +97,27 @@ impl Manager {
 
     /// Add (install) exactly one skill from a source.
     ///
-    /// `source` is either a local skill directory (it must directly contain a
-    /// `SKILL.md`) or `owner/repo@<skill>`, naming one skill on GitHub. The
-    /// skill name is always its **directory name**: for GitHub sources it
-    /// matches, case-insensitively, a repository directory that directly
-    /// contains `SKILL.md` (shallowest match wins); when no directory matches,
-    /// a `SKILL.md` at the repository root falls back to the whole repository
-    /// as the skill, named after the repository. The frontmatter
-    /// `name` is ignored. Pin a branch, tag, or full commit SHA with
+    /// `source` is either a local skill directory or the GitHub id `owner/repo/slug`,
+    /// naming one skill on GitHub. In both cases a **skill** is a directory
+    /// whose `SKILL.md` frontmatter declares a non-empty `name` — anything
+    /// else is rejected or never discovered. The id's last segment is the
+    /// skill's **slug** (its frontmatter `name` slugified: lowercase, spaces
+    /// as dashes, `/` dropped, everything else verbatim); the repository tree
+    /// is searched for the first manifest whose slugified `name` equals it,
+    /// in shallowest-then-path order. A `SKILL.md` at the repository
+    /// root is an ordinary candidate: when it matches, the whole
+    /// repository is the skill. Pin a branch, tag, or full commit SHA with
     /// [`AddRequest::reference`]; otherwise the repository's default branch is
     /// used. A remote install is a **single request** that downloads the
     /// repository tarball from `codeload.github.com` — the GitHub REST API is
     /// never used, so there is no API rate limit. Public repositories only;
     /// Git LFS files install as their pointer stubs.
+    ///
+    /// The installed directory keeps the matched skill directory's own name
+    /// in the source (for a root manifest, the repository name; for a local
+    /// add, the local directory's own name) — while the skill's identity,
+    /// what `list` reports and `remove`/`enable`/`disable` select by, is the
+    /// slugified frontmatter `name`.
     ///
     /// The skill is installed into the canonical dir (the only place real files
     /// live). `add` only ever adds: when a skill of the same name is already
@@ -165,7 +175,7 @@ impl Manager {
             SourceType::Local => {
                 if req.reference.is_some() {
                     return Err(SkillsError::msg(
-                        "--ref can only pin a GitHub source (`owner/repo@<skill>`).",
+                        "--ref can only pin a GitHub source (`owner/repo/slug`).",
                     ));
                 }
                 let path = parsed
@@ -184,11 +194,13 @@ impl Manager {
                         path.display()
                     )));
                 }
-                // Identity is the directory name; the manifest only provides the
-                // description. A skill named by its explicit path may be internal.
+                // The slugified frontmatter `name` is the skill's identity; a
+                // manifest without a non-empty `name` is not a skill.
+                // A skill named by its explicit path may be internal.
                 let Some(s) = read_skill(path, true) else {
                     return Err(SkillsError::msg(format!(
-                        "Not a skill directory: \"{}\" has no usable directory name.",
+                        "Not a skill directory: \"{}\" — its SKILL.md must declare \
+                         a non-empty `name` in the frontmatter.",
                         path.display()
                     )));
                 };
@@ -199,7 +211,7 @@ impl Manager {
                 let (tmp, s) = fetch_skill(
                     &parsed.owner,
                     &parsed.repo,
-                    &parsed.skill,
+                    &parsed.slug,
                     req.reference.as_deref(),
                 )?;
                 skill = s;
@@ -332,7 +344,10 @@ impl Manager {
     ///
     /// Scans the canonical skills directory (plus the disabled dir), producing
     /// serde-serializable [`ListedSkill`] values — the same shape emitted by
-    /// `list --json`. Which agents see a skill is not per-skill: every linked or
+    /// `list --json`. Each entry's `name` is the `name` parsed from the
+    /// SKILL.md frontmatter (falling back to the directory name when the
+    /// manifest declares none), and `path` carries the skill's real on-disk
+    /// directory. Which agents see a skill is not per-skill: every linked or
     /// native agent sees all skills in the canonical dir. Use
     /// [`Manager::agent_status`] to inspect that.
     ///
@@ -344,7 +359,7 @@ impl Manager {
     /// let manager = Manager::new();
     /// let skills = manager.list()?;
     /// for skill in &skills {
-    ///     println!("{} -> {}", skill.name, manager.skill_dir(skill).display());
+    ///     println!("{} -> {}", skill.name, skill.path.display());
     /// }
     /// # Ok::<(), agents_skills::Error>(())
     /// ```
@@ -356,7 +371,9 @@ impl Manager {
         for s in installed {
             out.push(ListedSkill {
                 name: s.name,
+                display_name: s.display_name,
                 description: s.description,
+                path: s.path,
                 enabled: true,
                 installed_at: s.installed_at,
             });
@@ -364,7 +381,9 @@ impl Manager {
         for s in disabled {
             out.push(ListedSkill {
                 name: s.name,
+                display_name: s.display_name,
                 description: s.description,
+                path: s.path,
                 enabled: false,
                 installed_at: s.installed_at,
             });
@@ -375,18 +394,11 @@ impl Manager {
 
     /// The on-disk directory of a listed skill.
     ///
-    /// Resolves [`ListedSkill::name`] (already the on-disk directory name)
-    /// against the canonical dir when the skill is enabled, or the sibling
-    /// `disabled-skills` dir when it is disabled.
-    ///
-    /// [`ListedSkill::name`]: crate::ListedSkill::name
+    /// Returns the skill's real directory as scanned by [`Manager::list`] —
+    /// the canonical dir when enabled, the sibling `disabled-skills` dir when
+    /// disabled.
     pub fn skill_dir(&self, skill: &ListedSkill) -> PathBuf {
-        let base = if skill.enabled {
-            canonical_skills_dir(&self.env)
-        } else {
-            disabled_skills_dir(&self.env)
-        };
-        base.join(&skill.name)
+        skill.path.clone()
     }
 
     /// Disable installed skills.
@@ -447,7 +459,7 @@ impl Manager {
 
         if req.skills.is_empty() && !req.all {
             return Ok(DisableOutcome {
-                installed,
+                installed: reported_names(&installed),
                 requested: Vec::new(),
                 disabled: Vec::new(),
                 already: Vec::new(),
@@ -456,7 +468,7 @@ impl Manager {
         }
 
         let requested: Vec<String> = if req.all {
-            installed.clone()
+            reported_names(&installed)
         } else {
             req.skills.clone()
         };
@@ -464,7 +476,7 @@ impl Manager {
             set_enabled_state(&requested, &installed, &disabled, false, &self.env)?;
 
         Ok(DisableOutcome {
-            installed,
+            installed: reported_names(&installed),
             requested,
             disabled: disabled_out,
             already,
@@ -528,7 +540,7 @@ impl Manager {
 
         if req.skills.is_empty() && !req.all {
             return Ok(EnableOutcome {
-                disabled,
+                disabled: reported_names(&disabled),
                 requested: Vec::new(),
                 enabled: Vec::new(),
                 already: Vec::new(),
@@ -537,7 +549,7 @@ impl Manager {
         }
 
         let requested: Vec<String> = if req.all {
-            disabled.clone()
+            reported_names(&disabled)
         } else {
             req.skills.clone()
         };
@@ -545,7 +557,7 @@ impl Manager {
             set_enabled_state(&requested, &disabled, &installed, true, &self.env)?;
 
         Ok(EnableOutcome {
-            disabled,
+            disabled: reported_names(&disabled),
             requested,
             enabled: enabled_out,
             already,
@@ -596,21 +608,25 @@ impl Manager {
         // List-only mode (no skills and not --all).
         if req.skills.is_empty() && !req.all {
             return Ok(RemoveOutcome {
-                installed,
+                installed: reported_names(&installed),
                 requested: Vec::new(),
                 removed: Vec::new(),
             });
         }
 
-        // Resolve the skill names to remove against the on-disk dir names.
+        // Resolve the skill names to remove against the reported names.
         let requested: Vec<String> = if req.all {
-            installed.iter().chain(disabled.iter()).cloned().collect()
+            installed
+                .iter()
+                .chain(disabled.iter())
+                .map(|s| s.name.clone())
+                .collect()
         } else {
             req.skills.clone()
         };
         if requested.is_empty() {
             return Ok(RemoveOutcome {
-                installed,
+                installed: reported_names(&installed),
                 requested: Vec::new(),
                 removed: Vec::new(),
             });
@@ -619,24 +635,26 @@ impl Manager {
         let selected = resolve_to_remove(&requested, &installed, &disabled);
         if selected.is_empty() {
             return Ok(RemoveOutcome {
-                installed,
+                installed: reported_names(&installed),
                 requested,
                 removed: Vec::new(),
             });
         }
 
-        // Remove every copy of each selected name: the canonical one (visible to
-        // every linked agent at once) and any parked copy in the disabled dir,
-        // including copies under a differently normalized directory name.
+        // Remove every copy of each selected skill: the canonical one (visible
+        // to every linked agent at once) and any parked copy in the disabled
+        // dir, including copies under a differently normalized directory name.
+        // The moves happen on the real on-disk directories; the outcome
+        // reports the frontmatter names.
         let mut removed: Vec<String> = Vec::new();
-        for name in &selected {
-            if remove_skill(name, &self.env) {
-                removed.push(name.clone());
+        for skill in &selected {
+            if remove_skill(&skill.dir_name, &self.env) {
+                removed.push(skill.name.clone());
             }
         }
 
         Ok(RemoveOutcome {
-            installed,
+            installed: reported_names(&installed),
             requested,
             removed,
         })

@@ -38,11 +38,11 @@ src/
 ├── error.rs            Unified error type and Result alias
 ├── core/               Domain logic (pure functions, injectable dependencies)
 │   ├── mod.rs          Module organization and re-exports
-│   ├── source.rs       Source-string parsing (local dir or `owner/repo@<skill>`)
+│   ├── source.rs       Source-string parsing (local dir or the id `owner/repo/slug`)
 │   ├── agents.rs       Declarative interpreter over the agent table (resolution + detection)
 │   ├── agents.jsonl    The agent table: one JSON object per agent line
-│   ├── discover.rs     Skill discovery: name = directory name, best-effort description read
-│   ├── github.rs       GitHub tarball fetching (codeload single request + local directory matching)
+│   ├── discover.rs     SKILL.md frontmatter helpers (best-effort name/description read)
+│   ├── github.rs       GitHub tarball fetching (codeload single request + local frontmatter-name matching)
 │   ├── install.rs      Install skills into the canonical directory + installed-skills listing
 │   ├── link/           Directory-level agent linking (link/unlink)
 │   │   ├── mod.rs      Link orchestration + adoption of pre-existing content

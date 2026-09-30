@@ -7,6 +7,33 @@
 
 英文版见 [CHANGELOG.md](CHANGELOG.md)。
 
+## [Unreleased]
+
+### 变更
+
+- **(breaking)** 安装参数改为 skills.sh 风格的 id `owner/repo/slug`；旧的
+  `owner/repo@<skill>` 形式会被拒绝并给出迁移提示。id 的最后一段是技能的
+  **slug**——由 SKILL.md frontmatter 的 `name` slug 化而来（小写、每个空格替换
+  为 `-`、`/` 删除、其余字符原样保留）。匹配比较 slug 化后的名称：在仓库 tree
+  中查找第一个 slug 化 `name` 与请求 slug 相等的 manifest（最浅优先、路径优先）；
+  仓库根目录的 `SKILL.md` 也是普通候选，命中时安装整个仓库；未命中报错。API：
+  `Source.skill` 更名为 `Source.slug`，`Source::slug()` 由 `Source::id()`
+  （完整 `owner/repo/slug`）取代。
+- **(breaking)** slug 成为唯一的技能身份：`list` 报告的 `name` 与
+  `remove`/`enable`/`disable` 的选择器都使用 slug 化后的 frontmatter `name`
+  （原始 name 仅作展示，出现在 `list` 输出的 `displayName` 中）。而安装的
+  目录保留被命中技能目录在源仓库中的原始目录名（根 manifest 为仓库名，本地
+  add 为本地目录名），不再折叠为规范化槽位名。
+- 技能的定义在所有路径上收紧：技能是 `SKILL.md` frontmatter 声明了非空
+  `name` 的目录（`description` 可选，缺失时为空）。没有 manifest、manifest
+  无法解析或缺失 `name` 的目录不再被发现——`list` 看不到，
+  `remove`/`enable`/`disable` 选不到，GitHub 选择器不命中，本地 `add` 直接
+  报错。
+- `list`（含 `list --json`）新增 `path` 字段标注技能的真实磁盘目录，新增
+  `displayName` 字段携带 frontmatter 中声明的原始 `name`。`remove` /
+  `disable` / `enable` 按 slug（大小写不敏感）选择技能，但实际操作真实磁盘
+  目录；`Manager::skill_dir` 现在直接返回扫描得到的路径。
+
 ## [0.25.0] — 2026-09-29
 
 ### 变更

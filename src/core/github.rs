@@ -3,13 +3,14 @@
 //! The whole repository tarball is downloaded from `codeload.github.com` — the
 //! GitHub REST API is never touched, so the anonymous 60-requests-per-hour API
 //! rate limit does not apply. The archive is unpacked into a temp dir and the
-//! skill is matched locally: a skill is a **directory** that directly contains
-//! `SKILL.md` and whose directory name matches the requested name
-//! (case-insensitive, shallowest match wins). When no directory matches, a
-//! `SKILL.md` at the repository root falls back to the whole repository as the
-//! skill, named after the repository. Nothing but the single tarball
-//! request is needed; public repositories only, and Git LFS files install as
-//! their pointer stubs.
+//! skill is matched locally: every directory that directly contains `SKILL.md`
+//! is a candidate, and the requested slug is matched against the slugified
+//! `name` of each manifest's frontmatter (first match in shallowest-then-path
+//! order wins). A `SKILL.md` at the repository root is an ordinary candidate —
+//! when it matches, the whole repository is the skill. The installed directory
+//! keeps the matched directory's name in the source repository, verbatim.
+//! Nothing but the single tarball request is needed; public repositories only,
+//! and Git LFS files install as their pointer stubs.
 //!
 //! The HTTP client is injected as a `get` closure so the whole selection logic is
 //! unit-testable offline; production uses a plain ureq GET.
@@ -22,38 +23,39 @@ use std::sync::OnceLock;
 use flate2::read::GzDecoder;
 use tar::{Archive, EntryType};
 
-use crate::core::discover::{Skill, read_description, read_skill};
+use crate::core::discover::{Skill, read_skill};
+use crate::core::install::slugify;
 use crate::error::{Result, SkillsError};
 
 /// Injected HTTP GET: returns the response body of `url`.
 type Get<'a> = &'a (dyn Fn(&str) -> Result<Vec<u8>> + Sync);
 
-/// Fetch the named skill's directory from GitHub into a fresh temp dir.
+/// Fetch the skill selected by `owner/repo/{skill_slug}` into a fresh temp dir.
 ///
 /// `Ok((temp, skill))` holds the matched skill; the caller keeps `temp` alive
 /// until the skill has been installed. `Ok` never carries "not found" — an
-/// unknown skill name is an error naming the skill and the repository.
+/// unknown slug is an error naming the slug and the repository.
 pub fn fetch_skill(
     owner: &str,
     repo: &str,
-    skill_name: &str,
+    skill_slug: &str,
     reference: Option<&str>,
 ) -> Result<(tempfile::TempDir, Skill)> {
     let slug = format!("{owner}/{repo}");
-    match fetch_skill_with(owner, repo, skill_name, reference, &http_get) {
+    match fetch_skill_with(owner, repo, skill_slug, reference, &http_get) {
         Ok(Some(v)) => Ok(v),
-        Ok(None) => Err(SkillsError::msg(not_found_message(skill_name, &slug))),
+        Ok(None) => Err(SkillsError::msg(not_found_message(skill_slug, &slug))),
         Err(e) => Err(decorate_download_error(e, &slug)),
     }
 }
 
-/// The error for a skill name the repository does not contain.
-fn not_found_message(skill_name: &str, slug: &str) -> String {
+/// The error for a slug no manifest in the repository matches.
+fn not_found_message(skill_slug: &str, slug: &str) -> String {
     format!(
-        "No skill named \"{skill_name}\" found in {slug} and no SKILL.md at the \
-         repository root. The name after @ matches a directory containing \
-         SKILL.md (case-insensitive); without a match, a SKILL.md at the \
-         repository root installs the whole repository."
+        "No skill with slug \"{skill_slug}\" found in {slug}. The id's last \
+         segment matches the slugified `name` of a SKILL.md frontmatter \
+         (lowercase, spaces as dashes, `/` dropped); the first matching \
+         manifest in the repository tree is installed."
     )
 }
 
@@ -86,7 +88,7 @@ fn download_repo(
         match get(&archive_url(owner, repo, &form)) {
             Ok(bytes) => {
                 unpack_archive(&bytes, root)?;
-                return Ok(repo_root_of(root));
+                return Ok(repo_root_of(root, repo));
             }
             Err(e) => {
                 // Only a 404 falls through to the next ref form (branch → tag);
@@ -152,78 +154,66 @@ fn unpack_archive(bytes: &[u8], root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// The repository root inside the unpacked archive: GitHub tarballs hold one
-/// top-level `<repo>-<ref>` directory, which is stripped.
-fn repo_root_of(root: &Path) -> PathBuf {
+/// The repository root inside the unpacked archive, named after the repo.
+///
+/// GitHub tarballs hold one top-level `<repo>-<ref>` directory; it is renamed
+/// to the plain repository name, so the skill directory's basename — the
+/// install slot a root-manifest skill gets — is meaningful. Any other layout
+/// (no or several top-level entries) is consolidated under `repo/` the same
+/// way.
+fn repo_root_of(root: &Path, repo: &str) -> PathBuf {
     let Ok(entries) = fs::read_dir(root) else {
         return root.to_path_buf();
     };
-    let dirs: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
-    if dirs.len() == 1 && dirs[0].is_dir() {
-        dirs[0].clone()
-    } else {
-        root.to_path_buf()
+    let paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+    let target = root.join(repo);
+    if paths.len() == 1 && paths[0].is_dir() {
+        if paths[0] != target {
+            let _ = fs::rename(&paths[0], &target);
+        }
+        return target;
     }
+    if paths.is_empty() {
+        return root.to_path_buf();
+    }
+    if fs::create_dir(&target).is_ok() {
+        for path in &paths {
+            let Some(name) = path.file_name() else {
+                continue;
+            };
+            let _ = fs::rename(path, target.join(name));
+        }
+        return target;
+    }
+    root.to_path_buf()
 }
 
 /// The skill matching [`fetch_skill`] promises, run on the unpacked tree.
 ///
-/// A directory that directly contains `SKILL.md` whose name matches
-/// (case-insensitive) is a candidate; the shallowest wins, ties broken by path
-/// for determinism. A root-level manifest has no directory name, so it takes
-/// the repository name. When no directory matches, a `SKILL.md` at the
-/// repository root is the fallback: the whole repository becomes the skill,
-/// named after the repository, whatever name was requested.
-fn select_skill(repo_root: &Path, repo: &str, skill_name: &str) -> Result<Option<Skill>> {
+/// Every directory that directly contains a `SKILL.md` is a candidate: each
+/// manifest's slugified frontmatter `name` is matched against the requested
+/// slug, and the first match in (depth, path) order wins. A manifest without
+/// a frontmatter declaring a non-empty `name` is not a skill and never
+/// matches. The root manifest is an ordinary candidate: when it matches, the
+/// whole repository is the skill.
+fn select_skill(repo_root: &Path, skill_slug: &str) -> Result<Option<Skill>> {
+    let requested = slugify(skill_slug);
     let mut candidates: Vec<(usize, String)> = Vec::new();
     collect_manifest_dirs(repo_root, "", &mut candidates)?;
+    candidates.sort();
 
-    let mut matched: Option<(usize, String)> = None;
-    for (depth, dir) in candidates {
-        let name = if dir.is_empty() {
-            repo
-        } else {
-            dir.rsplit('/').next().unwrap_or_default()
+    for (_, dir) in candidates {
+        let path = repo_root.join(&dir);
+        // Explicit selection also makes internal skills visible.
+        let Some(skill) = read_skill(&path, true) else {
+            continue;
         };
-        if !name.eq_ignore_ascii_case(skill_name) {
+        if slugify(&skill.name) != requested {
             continue;
         }
-        let better = match &matched {
-            None => true,
-            Some((d, p)) => (depth, dir.as_str()) < (*d, p.as_str()),
-        };
-        if better {
-            matched = Some((depth, dir));
-        }
+        return Ok(Some(skill));
     }
-
-    let Some((_, dir)) = matched else {
-        // No directory matched: fall back to a root-level SKILL.md, if any.
-        return Ok(root_skill(repo_root, repo));
-    };
-    // The matched directory is the skill; the manifest contributes only the
-    // description. Explicit selection also makes internal skills visible.
-    // The root case has no directory name, so the skill is named after the
-    // repository.
-    Ok(if dir.is_empty() {
-        root_skill(repo_root, repo)
-    } else {
-        read_skill(&repo_root.join(&dir), true)
-    })
-}
-
-/// The root-level manifest as a skill named after the repository, or `None`
-/// when the repository root has no `SKILL.md`.
-fn root_skill(repo_root: &Path, repo: &str) -> Option<Skill> {
-    let manifest = repo_root.join("SKILL.md");
-    if !manifest.is_file() {
-        return None;
-    }
-    Some(Skill {
-        name: repo.to_string(),
-        description: read_description(&manifest),
-        dir: repo_root.to_path_buf(),
-    })
+    Ok(None)
 }
 
 /// Every directory under `dir` (relative path `rel`) that directly contains a
@@ -254,17 +244,17 @@ fn collect_manifest_dirs(dir: &Path, rel: &str, out: &mut Vec<(usize, String)>) 
 }
 
 /// Injectable core of [`fetch_skill`]: `Ok(None)` means the download worked but
-/// no skill directory matched the name.
+/// no manifest's slugified name matched the requested slug.
 fn fetch_skill_with(
     owner: &str,
     repo: &str,
-    skill_name: &str,
+    skill_slug: &str,
     reference: Option<&str>,
     get: Get,
 ) -> Result<Option<(tempfile::TempDir, Skill)>> {
     let temp = tempfile::TempDir::new()?;
     let repo_root = download_repo(owner, repo, reference, temp.path(), get)?;
-    match select_skill(&repo_root, repo, skill_name)? {
+    match select_skill(&repo_root, skill_slug)? {
         Some(skill) => Ok(Some((temp, skill))),
         None => Ok(None),
     }
@@ -422,7 +412,7 @@ mod tests {
             .expect("pdf should match");
 
         assert_eq!(skill.name, "pdf");
-        let root = tmp.path().join("skills-main");
+        let root = tmp.path().join("skills");
         assert!(root.join("pdf/SKILL.md").is_file());
         assert!(root.join("pdf/scripts/run.sh").is_file());
         // The whole repo is unpacked; only the *selection* is narrowed.
@@ -432,30 +422,33 @@ mod tests {
     }
 
     #[test]
-    fn fetch_matches_on_directory_name_ignoring_frontmatter_name() {
-        // The skill name is the directory name; the frontmatter `name` is
-        // ignored. Matching is case-insensitive.
+    fn fetch_matches_on_the_slugified_frontmatter_name() {
+        // The requested slug is compared against the slugified `name` field
+        // parsed from SKILL.md; the directory name is irrelevant to matching.
+        // Matching is case-insensitive (slugs are lowercase on both sides).
         let body = tarball(
             "skills-main",
             &[(
                 "skills/PDF Master/SKILL.md",
-                "---\nname: pdf-skill\ndescription: d\n---\nbody",
+                "---\nname: PDF Skill\ndescription: d\n---\nbody",
                 0o644,
             )],
             &[],
         );
         let (get, _urls) = fake_get(&[FORM_HEAD], body);
-        let (_tmp, skill) = fetch_skill_with("acme", "skills", "pdf master", None, &get)
+        let (_tmp, skill) = fetch_skill_with("acme", "skills", "pdf-skill", None, &get)
             .unwrap()
-            .expect("directory name should match");
-        assert_eq!(skill.name, "PDF Master");
+            .expect("slugified frontmatter name should match");
+        assert_eq!(skill.name, "PDF Skill");
         assert_eq!(skill.description, "d");
+        // The install slot is the directory's basename in the repo, verbatim.
+        assert_eq!(skill.dir.file_name().unwrap(), "PDF Master");
     }
 
     #[test]
-    fn fetch_does_not_match_on_frontmatter_name() {
-        // The directory is `acrobat`; a frontmatter `name: pdf` must not make
-        // `@pdf` match anymore.
+    fn fetch_does_not_match_on_directory_name() {
+        // The directory is `acrobat`; its frontmatter declares `name: pdf`.
+        // Only the slugified frontmatter name selects the skill.
         let body = tarball(
             "skills-main",
             &[(
@@ -467,21 +460,42 @@ mod tests {
         );
         let (get, _urls) = fake_get(&[FORM_HEAD], body);
         assert!(
-            fetch_skill_with("acme", "skills", "pdf", None, &get)
+            fetch_skill_with("acme", "skills", "acrobat", None, &get)
                 .unwrap()
                 .is_none()
         );
-        // The directory name still selects it.
-        let (_tmp, skill) = fetch_skill_with("acme", "skills", "acrobat", None, &get)
+        let (_tmp, skill) = fetch_skill_with("acme", "skills", "pdf", None, &get)
             .unwrap()
-            .expect("directory name should match");
-        assert_eq!(skill.name, "acrobat");
+            .expect("frontmatter name should match");
+        assert_eq!(skill.name, "pdf");
+        assert_eq!(skill.dir.file_name().unwrap(), "acrobat");
     }
 
     #[test]
-    fn fetch_root_skill_md_is_selected_by_repo_name() {
-        // A SKILL.md at the repository root is a skill named after the repo;
-        // selecting it installs the whole repository.
+    fn fetch_slug_keeps_punctuation_verbatim() {
+        // Slugify only lowercases, turns spaces into dashes, and drops `/`:
+        // everything else survives, so `c++ & rust.net` matches its own slug.
+        let body = tarball(
+            "skills-main",
+            &[(
+                "lang/SKILL.md",
+                "---\nname: C++ & Rust.net\ndescription: d\n---\nbody",
+                0o644,
+            )],
+            &[],
+        );
+        let (get, _urls) = fake_get(&[FORM_HEAD], body);
+        let (_tmp, skill) = fetch_skill_with("acme", "skills", "c++-&-rust.net", None, &get)
+            .unwrap()
+            .expect("punctuation-preserving slug should match");
+        assert_eq!(skill.name, "C++ & Rust.net");
+        assert_eq!(skill.dir.file_name().unwrap(), "lang");
+    }
+
+    #[test]
+    fn fetch_root_skill_md_is_selected_by_its_name() {
+        // A SKILL.md at the repository root is an ordinary candidate: when it
+        // matches, the whole repository is the skill.
         let body = tarball(
             "skills-main",
             &[
@@ -495,12 +509,13 @@ mod tests {
             &[],
         );
         let (get, _urls) = fake_get(&[FORM_HEAD], body);
-        let (tmp, skill) = fetch_skill_with("acme", "skills", "skills", None, &get)
+        let (tmp, skill) = fetch_skill_with("acme", "skills", "whatever", None, &get)
             .unwrap()
-            .expect("root manifest is selected with the repo name");
-        assert_eq!(skill.name, "skills");
+            .expect("root manifest is selected with its frontmatter name");
+        assert_eq!(skill.name, "whatever");
         assert_eq!(skill.description, "root skill");
-        let root = tmp.path().join("skills-main");
+        let root = tmp.path().join("skills");
+        assert_eq!(skill.dir, root);
         assert!(root.join("SKILL.md").is_file());
         assert!(root.join("README.md").is_file());
     }
@@ -529,15 +544,16 @@ mod tests {
             .unwrap()
             .expect("pdf should match");
         assert_eq!(skill.description, "shallow");
-        let root = tmp.path().join("skills-main");
+        let root = tmp.path().join("skills");
         assert!(root.join("pdf/SKILL.md").is_file());
         assert_eq!(skill.dir, root.join("pdf"));
     }
 
     #[test]
-    fn fetch_unmatched_name_falls_back_to_root_skill_md() {
-        // No directory matches the requested name: a root-level SKILL.md
-        // silently installs the whole repository under the repository name.
+    fn fetch_unmatched_name_returns_none_even_with_root_manifest() {
+        // No SKILL.md in the tree declares the requested name: the root
+        // manifest no longer silently installs the whole repository — the
+        // selector matches frontmatter names only.
         let body = tarball(
             "skills-main",
             &[
@@ -556,24 +572,35 @@ mod tests {
             &[],
         );
         let (get, _urls) = fake_get(&[FORM_HEAD], body);
-        let (tmp, skill) = fetch_skill_with("acme", "skills", "typo-name", None, &get)
-            .unwrap()
-            .expect("root manifest should fall back");
-        assert_eq!(skill.name, "skills");
-        assert_eq!(skill.description, "root skill");
-        let root = tmp.path().join("skills-main");
-        assert_eq!(skill.dir, root);
-        assert!(root.join("SKILL.md").is_file());
+        assert!(
+            fetch_skill_with("acme", "skills", "typo-name", None, &get)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
-    fn fetch_directory_name_still_beats_root_fallback() {
-        // With a root SKILL.md present, a directory match still wins.
+    fn fetch_first_match_in_shallowest_then_path_order_wins() {
+        // Several manifests declare the same name: the first candidate in
+        // (depth, path) order is installed. `a` precedes `b` at equal depth.
         let body = tarball(
             "skills-main",
             &[
-                ("SKILL.md", "---\ndescription: root skill\n---\nbody", 0o644),
-                ("pdf/SKILL.md", "---\ndescription: subdir\n---\nbody", 0o644),
+                (
+                    "b/SKILL.md",
+                    "---\nname: pdf\ndescription: b\n---\nbody",
+                    0o644,
+                ),
+                (
+                    "a/SKILL.md",
+                    "---\nname: pdf\ndescription: a\n---\nbody",
+                    0o644,
+                ),
+                (
+                    "deep/nested/SKILL.md",
+                    "---\nname: pdf\ndescription: deep\n---\nbody",
+                    0o644,
+                ),
             ],
             &[],
         );
@@ -581,8 +608,8 @@ mod tests {
         let (tmp, skill) = fetch_skill_with("acme", "skills", "pdf", None, &get)
             .unwrap()
             .expect("pdf should match");
-        assert_eq!(skill.description, "subdir");
-        assert_eq!(skill.dir, tmp.path().join("skills-main").join("pdf"));
+        assert_eq!(skill.description, "a");
+        assert_eq!(skill.dir, tmp.path().join("skills").join("a"));
     }
 
     #[test]
@@ -615,7 +642,7 @@ mod tests {
     #[test]
     fn fetch_public_not_found_is_a_clean_message() {
         let msg = not_found_message("zzz", "acme/skills");
-        assert!(msg.contains("No skill named \"zzz\""), "{msg}");
+        assert!(msg.contains("No skill with slug \"zzz\""), "{msg}");
         assert!(msg.contains("acme/skills"), "{msg}");
         assert!(!msg.contains("download failed"), "{msg}");
     }
@@ -624,7 +651,11 @@ mod tests {
     fn no_ref_uses_head() {
         let body = tarball(
             "skills-main",
-            &[("pdf/SKILL.md", "---\ndescription: d\n---\nbody", 0o644)],
+            &[(
+                "pdf/SKILL.md",
+                "---\nname: pdf\ndescription: d\n---\nbody",
+                0o644,
+            )],
             &[],
         );
         let (get, urls) = fake_get(&[FORM_HEAD], body);
@@ -641,7 +672,11 @@ mod tests {
     fn branch_ref_targets_refs_heads() {
         let body = tarball(
             "skills-main",
-            &[("pdf/SKILL.md", "---\ndescription: d\n---\nbody", 0o644)],
+            &[(
+                "pdf/SKILL.md",
+                "---\nname: pdf\ndescription: d\n---\nbody",
+                0o644,
+            )],
             &[],
         );
         let (get, urls) = fake_get(&["tar.gz/refs/heads/feat/x"], body);
@@ -658,7 +693,11 @@ mod tests {
         // Branches are tried first; a tag exists only under refs/tags.
         let body = tarball(
             "skills-v1.2",
-            &[("pdf/SKILL.md", "---\ndescription: d\n---\nbody", 0o644)],
+            &[(
+                "pdf/SKILL.md",
+                "---\nname: pdf\ndescription: d\n---\nbody",
+                0o644,
+            )],
             &[],
         );
         let (get, urls) = fake_get(&["tar.gz/refs/tags/v1.2"], body);
@@ -676,7 +715,11 @@ mod tests {
         const SHA: &str = "0123456789abcdef0123456789abcdef01234567";
         let body = tarball(
             "skills-sha",
-            &[("pdf/SKILL.md", "---\ndescription: d\n---\nbody", 0o644)],
+            &[(
+                "pdf/SKILL.md",
+                "---\nname: pdf\ndescription: d\n---\nbody",
+                0o644,
+            )],
             &[],
         );
         let (get, urls) = fake_get(&[SHA], body);
@@ -743,7 +786,7 @@ mod tests {
             .expect("pdf should match");
 
         let mode = |p: &str| {
-            std::fs::metadata(tmp.path().join("skills-main").join(p))
+            std::fs::metadata(tmp.path().join("skills").join(p))
                 .unwrap()
                 .permissions()
                 .mode()

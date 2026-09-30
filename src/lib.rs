@@ -17,7 +17,7 @@
 //!     .cwd("/tmp/project")
 //!     .build();
 //!
-//! // Install one skill — a local directory or `owner/repo@<skill>`
+//! // Install one skill — a local directory or the id `owner/repo/slug`
 //! // (see [`Manager::add`] for a local example). Then list what's installed.
 //! let skills = manager.list()?;
 //!
@@ -49,6 +49,7 @@ pub use manager::{
 // Data types carried by the facade's outcomes (implementation lives in the private core).
 pub use core::agents::Env;
 pub use core::discover::Skill;
+pub use core::install::slugify;
 pub use core::link::LinkOutcome;
 pub use core::source::{Source, SourceType};
 

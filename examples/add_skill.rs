@@ -1,7 +1,7 @@
 //! Install a skill using the high-level [`Manager`] facade.
 //!
 //! Run with:
-//!   cargo run --example add_skill -- anthropics/skills@pdf
+//!   cargo run --example add_skill -- anthropics/skills/pdf
 //!   cargo run --example add_skill -- ./path/to/skill
 //!
 //! Note: this installs into your real environment. Run `agents-skills agent --link`
@@ -12,7 +12,7 @@ use agents_skills::{AddRequest, Manager};
 fn main() -> agents_skills::Result<()> {
     let source = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| "anthropics/skills@pdf".to_string());
+        .unwrap_or_else(|| "anthropics/skills/pdf".to_string());
 
     let manager = Manager::new();
     let outcome = manager.add(&AddRequest::new(source))?;

@@ -18,7 +18,7 @@ agents-skills = "0.21"
 use agents_skills::{AddRequest, Manager};
 
 let manager = Manager::new();
-let outcome = manager.add(&AddRequest::new("anthropics/skills@pdf"))?;
+let outcome = manager.add(&AddRequest::new("anthropics/skills/pdf"))?;
 println!("{} (skipped={})", outcome.skill.name, outcome.skipped);
 let skills = manager.list()?;
 ```
@@ -42,7 +42,7 @@ Request fields:
 
 | Struct             | Fields                                                                                                           |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| [`AddRequest`]     | `source: String` (a local skill directory or `owner/repo@<skill>`), `reference: Option<String>` (branch/tag/SHA) |
+| [`AddRequest`]     | `source: String` (a local skill directory or the GitHub id `owner/repo/slug`), `reference: Option<String>` (branch/tag/SHA) |
 | [`AgentRequest`]   | `agents: Vec<String>` (`"*"` or names, empty = auto-detect), `unlink: bool`                                      |
 | [`RemoveRequest`]  | `skills: Vec<String>`, `all: bool`                                                                               |
 | [`DisableRequest`] | `skills: Vec<String>`, `all: bool`                                                                               |
@@ -68,7 +68,7 @@ use agents_skills::{AddRequest, DisableRequest, EnableRequest, RemoveRequest};
 
 // Pin a branch/tag/SHA with `reference` (None = default branch).
 manager.add(&AddRequest {
-    source: "anthropics/skills@pdf".into(),
+    source: "anthropics/skills/pdf".into(),
     reference: Some("v1.2".into()),
     ..Default::default()
 })?;

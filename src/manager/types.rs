@@ -19,11 +19,12 @@ use crate::core::source::Source;
 /// and struct-update syntax (`..Default::default()`) to override just the fields
 /// you need.
 ///
-/// `source` accepts exactly two forms: a local skill directory (it must directly
-/// contain a `SKILL.md`), or `owner/repo@<skill>` for one named skill on GitHub.
+/// `source` accepts exactly two forms: a local skill directory (its `SKILL.md`
+/// must declare a non-empty `name`), or the GitHub id `owner/repo/slug`
+/// for one named skill on GitHub.
 #[derive(Debug, Clone, Default)]
 pub struct AddRequest {
-    /// Local skill directory, or `owner/repo@<skill>`.
+    /// Local skill directory, or the GitHub id `owner/repo/slug`.
     pub source: String,
     /// Branch, tag, or full commit SHA to pin (GitHub sources only; `None` = default branch).
     pub reference: Option<String>,
@@ -37,8 +38,8 @@ impl AddRequest {
     /// ```
     /// use agents_skills::{AddRequest, Manager};
     ///
-    /// let req = AddRequest::new("anthropics/skills@pdf");
-    /// assert_eq!(req.source, "anthropics/skills@pdf");
+    /// let req = AddRequest::new("anthropics/skills/pdf");
+    /// assert_eq!(req.source, "anthropics/skills/pdf");
     /// assert!(req.reference.is_none()); // default branch
     /// # let _ = Manager::new();
     /// ```
@@ -160,11 +161,22 @@ pub struct AgentOutcome {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListedSkill {
-    /// Skill name — its on-disk directory name, the identity used by
-    /// `remove`/`disable`/`enable` (the SKILL.md frontmatter `name` is ignored).
+    /// Skill slug — the SKILL.md frontmatter `name` slugified (lowercase,
+    /// spaces as dashes). This is the identity every command
+    /// (`add`/`remove`/`disable`/`enable`) selects by, and the on-disk
+    /// directory name of a fresh install. Directories whose manifest declares
+    /// no `name` are not skills and are never listed.
     pub name: String,
+    /// The frontmatter `name` as declared — a display-only rendition of the
+    /// same skill (it may contain spaces and mixed case the slug folds away).
+    pub display_name: String,
     /// Skill description (from `SKILL.md` frontmatter).
     pub description: String,
+    /// The skill's real on-disk directory (in the canonical dir when enabled,
+    /// in the sibling `disabled-skills` dir when disabled). The on-disk
+    /// directory name can differ from the slug for skills adopted from an
+    /// agent dir.
+    pub path: std::path::PathBuf,
     /// Whether the skill is enabled (`true`) or parked in `disabled-skills` (`false`).
     pub enabled: bool,
     /// The skill directory's creation time, as Unix seconds (UTC) — an
@@ -178,22 +190,24 @@ pub struct ListedSkill {
 /// Result of [`Manager::remove`].
 #[derive(Debug)]
 pub struct RemoveOutcome {
-    /// Installed names scanned (used by the no-args hint).
+    /// Names of the installed (enabled) skills as reported — the SKILL.md
+    /// frontmatter `name` (used by the no-args hint).
     pub installed: Vec<String>,
     /// Requested names (used by the no-match hint).
     pub requested: Vec<String>,
-    /// Names actually removed.
+    /// Names actually removed, as reported.
     pub removed: Vec<String>,
 }
 
 /// Result of [`Manager::disable`].
 #[derive(Debug)]
 pub struct DisableOutcome {
-    /// Currently enabled names (used by the no-args hint).
+    /// Names of the currently enabled skills as reported — the SKILL.md
+    /// frontmatter `name` (used by the no-args hint).
     pub installed: Vec<String>,
     /// Requested names (used by the no-match hint).
     pub requested: Vec<String>,
-    /// Names actually disabled.
+    /// Names actually disabled, as reported.
     pub disabled: Vec<String>,
     /// Names that were already disabled (idempotent no-op).
     pub already: Vec<String>,
@@ -204,11 +218,12 @@ pub struct DisableOutcome {
 /// Result of [`Manager::enable`].
 #[derive(Debug)]
 pub struct EnableOutcome {
-    /// Currently disabled names (used by the no-args hint).
+    /// Names of the currently disabled skills as reported — the SKILL.md
+    /// frontmatter `name` (used by the no-args hint).
     pub disabled: Vec<String>,
     /// Requested names (used by the no-match hint).
     pub requested: Vec<String>,
-    /// Names actually enabled.
+    /// Names actually enabled, as reported.
     pub enabled: Vec<String>,
     /// Names that were already enabled (idempotent no-op).
     pub already: Vec<String>,
