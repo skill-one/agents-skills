@@ -86,7 +86,7 @@ fn add_missing_local_path_exits_nonzero() {
         .assert()
         .failure()
         .code(1)
-        .stdout(predicate::str::contains("Local path does not exist"));
+        .stderr(predicate::str::contains("Local path does not exist"));
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn add_local_dir_without_skill_md_is_rejected() {
         .assert()
         .failure()
         .code(1)
-        .stdout(predicate::str::contains("Not a skill directory"));
+        .stderr(predicate::str::contains("Not a skill directory"));
 
     // Pointing directly at the skill directory works.
     let skill_dir = p.path().join("repo/skills/pdf");
@@ -122,8 +122,8 @@ fn bare_owner_repo_is_rejected_without_network() {
         .assert()
         .failure()
         .code(1)
-        .stdout(predicate::str::contains("three segments"))
-        .stdout(predicate::str::contains("owner/repo/<slug>"));
+        .stderr(predicate::str::contains("three segments"))
+        .stderr(predicate::str::contains("owner/repo/<slug>"));
 }
 
 #[test]
@@ -135,8 +135,8 @@ fn legacy_at_syntax_is_rejected_without_network() {
         .assert()
         .failure()
         .code(1)
-        .stdout(predicate::str::contains("no longer supported"))
-        .stdout(predicate::str::contains("owner/repo/<slug>"));
+        .stderr(predicate::str::contains("no longer supported"))
+        .stderr(predicate::str::contains("owner/repo/<slug>"));
 }
 
 #[test]
@@ -148,14 +148,14 @@ fn subpath_and_url_sources_are_rejected() {
         .assert()
         .failure()
         .code(1)
-        .stdout(predicate::str::contains("exactly three segments"));
+        .stderr(predicate::str::contains("exactly three segments"));
 
     p.skills()
         .args(["add", "https://github.com/acme/skills"])
         .assert()
         .failure()
         .code(1)
-        .stdout(predicate::str::contains("Full URLs"));
+        .stderr(predicate::str::contains("Full URLs"));
 }
 
 #[test]
@@ -223,7 +223,7 @@ fn ref_flag_is_rejected_for_local_sources() {
         .assert()
         .failure()
         .code(1)
-        .stdout(predicate::str::contains(
+        .stderr(predicate::str::contains(
             "--ref can only pin a GitHub source",
         ));
 

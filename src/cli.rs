@@ -5,6 +5,7 @@
 //! aliases — the full names are short and unambiguous (cargo-style minimalism).
 
 use clap::{ArgGroup, Args, Parser, Subcommand};
+use std::io::IsTerminal;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -112,18 +113,39 @@ pub struct AgentArgs {
 }
 
 // ============================================================================
-// Banner.
+// Banner + ANSI styles.
 // ============================================================================
 
-pub const RESET: &str = "\x1b[0m";
+/// ANSI styles, rendered empty when colors are off: stdout is not a terminal
+/// (piped, redirected) or `NO_COLOR` is set. Decided lazily, once per process.
+pub struct Style(&'static str);
+
+impl std::fmt::Display for Style {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn enabled() -> bool {
+            use std::sync::OnceLock;
+            static ENABLED: OnceLock<bool> = OnceLock::new();
+            *ENABLED.get_or_init(|| {
+                std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none()
+            })
+        }
+        if enabled() {
+            f.write_str(self.0)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+pub static RESET: Style = Style("\x1b[0m");
 /// 256-color grayscale, readable on both dark and light backgrounds.
-pub const DIM: &str = "\x1b[38;5;102m";
-pub const TEXT: &str = "\x1b[38;5;145m";
-pub const BOLD: &str = "\x1b[1m";
-pub const CYAN: &str = "\x1b[36m";
-pub const GREEN: &str = "\x1b[32m";
-pub const YELLOW: &str = "\x1b[33m";
-pub const RED: &str = "\x1b[31m";
+pub static DIM: Style = Style("\x1b[38;5;102m");
+pub static TEXT: Style = Style("\x1b[38;5;145m");
+pub static BOLD: Style = Style("\x1b[1m");
+pub static CYAN: Style = Style("\x1b[36m");
+pub static GREEN: Style = Style("\x1b[32m");
+pub static YELLOW: Style = Style("\x1b[33m");
+pub static RED: Style = Style("\x1b[31m");
 
 /// Banner printed when no args are given (experimental commands removed).
 pub fn show_banner() {

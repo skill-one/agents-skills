@@ -29,7 +29,7 @@ pub fn run(manager: &Manager, args: AddArgs) -> Result<()> {
 fn fail_add(e: SkillsError) -> Result<()> {
     match e {
         SkillsError::Message(msg) => {
-            println!("\x1b[31m{msg}\x1b[0m");
+            eprintln!("\x1b[31m{msg}\x1b[0m");
             std::process::exit(1);
         }
         other => fail_agents(other),

@@ -20,8 +20,8 @@ use agents_skills::{AgentLinkResult, Env, LinkOutcome, SkillsError};
 pub fn fail_agents(e: SkillsError) -> Result<()> {
     match e {
         SkillsError::InvalidAgents(names) => {
-            println!("{YELLOW}Invalid agents: {names}{RESET}");
-            println!(
+            eprintln!("{YELLOW}Invalid agents: {names}{RESET}");
+            eprintln!(
                 "{DIM}Valid agents: {}{RESET}",
                 agents_skills::agent_names().join(", ")
             );
