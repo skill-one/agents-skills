@@ -185,7 +185,7 @@ fn agent_status_reports_manually_unlinked_agent() {
         .success();
 
     // Remove the link manually: status must fall back to "not linked".
-    std::fs::remove_file(p.path().join(".claude/skills")).unwrap();
+    common::remove_link(&p.path().join(".claude/skills"));
 
     p.skills()
         .args(["agent", "--status"])

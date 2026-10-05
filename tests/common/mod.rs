@@ -87,6 +87,15 @@ pub fn write_skill_source(root: &Path, rel_dir: &str, name: &str) -> PathBuf {
     dir
 }
 
+/// Remove a directory link on any platform: `RemoveDirectory` on Windows,
+/// where junctions refuse `DeleteFile`; `remove_file` elsewhere.
+pub fn remove_link(link: &Path) {
+    #[cfg(windows)]
+    std::fs::remove_dir(link).expect("remove dir link");
+    #[cfg(not(windows))]
+    std::fs::remove_file(link).expect("remove dir link");
+}
+
 /// Generate standard SKILL.md content.
 pub fn skill_md(name: &str) -> String {
     format!("---\nname: {name}\ndescription: does {name}\n---\n\n# {name}\n")
