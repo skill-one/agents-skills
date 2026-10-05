@@ -66,6 +66,10 @@ fn is_local_path(input: &str) -> bool {
     if input.starts_with("./") || input.starts_with("../") {
         return true;
     }
+    // Windows-style relative prefixes: `.\skill` is PowerShell muscle memory.
+    if input.starts_with(".\\") || input.starts_with("..\\") {
+        return true;
+    }
     if input == "." || input == ".." {
         return true;
     }
@@ -203,6 +207,15 @@ mod tests {
     fn local_windows_drive() {
         let s = parse_source(r"C:\foo\skill").unwrap();
         assert_eq!(s.ty, SourceType::Local);
+    }
+
+    #[test]
+    fn windows_relative_prefixes_are_local_paths() {
+        // PowerShell muscle memory: `.\skill` and `..\skill` are local dirs.
+        for input in [".\\skills\\pdf", "..\\skills\\pdf"] {
+            let s = parse_source(input).unwrap();
+            assert_eq!(s.ty, SourceType::Local);
+        }
     }
 
     #[test]

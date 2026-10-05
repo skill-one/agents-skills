@@ -9,6 +9,8 @@ use std::path::{Component, Path, PathBuf};
 
 /// Lexically resolve `.` / `..` components for path comparison (no filesystem access).
 pub fn normalize_lexical(p: &Path) -> PathBuf {
+    #[cfg(windows)]
+    let p = &strip_verbatim_prefix(p);
     let mut out = PathBuf::new();
     for comp in p.components() {
         match comp {
@@ -20,6 +22,21 @@ pub fn normalize_lexical(p: &Path) -> PathBuf {
         }
     }
     out
+}
+
+/// Drop the Windows verbatim prefix (`\\?\C:\...` → `C:\...`): `read_link` on
+/// a junction can yield a verbatim path, which must compare equal to the
+/// plain path it names.
+#[cfg(windows)]
+fn strip_verbatim_prefix(p: &Path) -> PathBuf {
+    let text = p.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) => PathBuf::from(rest),
+        None => p.to_path_buf(),
+    }
 }
 
 /// Canonicalize as much of `p` as exists: the deepest existing ancestor is

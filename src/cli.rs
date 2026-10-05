@@ -98,19 +98,48 @@ pub struct Style(&'static str);
 
 impl std::fmt::Display for Style {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fn enabled() -> bool {
-            use std::sync::OnceLock;
-            static ENABLED: OnceLock<bool> = OnceLock::new();
-            *ENABLED.get_or_init(|| {
-                std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none()
-            })
-        }
-        if enabled() {
+        if colors_enabled() {
             f.write_str(self.0)
         } else {
             Ok(())
         }
     }
+}
+
+/// Whether ANSI styles render: stdout is a terminal, `NO_COLOR` is unset, and
+/// the console accepted virtual-terminal processing. Decided lazily, once per
+/// process.
+fn colors_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::io::stdout().is_terminal()
+            && std::env::var_os("NO_COLOR").is_none()
+            && console_supports_ansi()
+    })
+}
+
+/// Windows: switch the legacy console to virtual-terminal processing so ANSI
+/// styles render instead of printing as garbage (Windows Terminal and
+/// redirected output need nothing). Returns false where that is impossible,
+/// so styles fall back to plain text.
+#[cfg(windows)]
+fn console_supports_ansi() -> bool {
+    use windows_sys::Win32::System::Console::{
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING, GetConsoleMode, GetStdHandle, STD_OUTPUT_HANDLE,
+        SetConsoleMode,
+    };
+    unsafe {
+        let mut mode = 0u32;
+        let console = GetStdHandle(STD_OUTPUT_HANDLE);
+        GetConsoleMode(console, &mut mode) != 0
+            && SetConsoleMode(console, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0
+    }
+}
+
+#[cfg(not(windows))]
+fn console_supports_ansi() -> bool {
+    true
 }
 
 pub static RESET: Style = Style("\x1b[0m");

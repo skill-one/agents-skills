@@ -117,10 +117,11 @@ agent 的根目录尚不存在也会建立链接。上游表不含该字段—�
 会把 `LOCAL_OVERRIDES` 合并进生成的表。`INSTALL_INTERNAL_SKILLS` 在 manager
 构造时通过 `Env` 解析,库的沙箱环境因此保持封闭。
 
-agent 是否需要符号链接由 `agents.rs` 中的 `is_native` 判定:将解析后的 `skills_dir`
+agent 是否需要链接由 `agents.rs` 中的 `is_native` 判定:将解析后的 `skills_dir`
 路径规格与 `~/.agents/skills` 比较——只有目录恰好等于它的 agent(如 cline、warp)
 才是原生的,无需链接。厂商私有目录的 agent(如 Antigravity 的
-`~/.gemini/config/skills`)需要建立真实的目录级符号链接。`universal` 伪 agent
+`~/.gemini/config/skills`)需要建立目录链接(Unix 上是符号链接,Windows 上是
+无需特权的 junction)。`universal` 伪 agent
 的 `"detect": []` 使它永远不会被检测为已安装。
 
 ## 开发与测试

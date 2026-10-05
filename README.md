@@ -31,7 +31,8 @@ agents-skills list                          # list installed skills
 Every skill is stored exactly once in the canonical directory
 `~/.agents/skills/<name>` (disabled skills in
 `~/.agents/disabled-skills/<name>`). `agent --link` points each installed
-agent's skills directory at it with a symlink, so skills installed afterwards
+agent's skills directory at it with a directory link (a symlink on Unix, a
+junction on Windows), so skills installed afterwards
 are visible to all agents immediately — no syncing.
 
 ```bash

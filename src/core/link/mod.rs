@@ -1,10 +1,10 @@
 //! Directory-level agent links: connect each agent's skills dir to the canonical dir.
 //!
 //! The canonical dir holds the only real copies of installed skills; agents that do
-//! not natively read it are integrated with a directory-level symlink
-//! ([`link_agent`]): each agent's own skills dir becomes a relative link pointing
-//! at the canonical dir, so every install/remove is instantly visible to all
-//! linked agents.
+//! not natively read it are integrated with a directory-level link — a symlink on
+//! Unix, a junction on Windows ([`link_agent`]): each agent's own skills dir becomes
+//! a link pointing at the canonical dir, so every install/remove is instantly
+//! visible to all linked agents.
 //!
 //! Linking adopts whatever the agent dir already holds: skill dirs are moved into
 //! the canonical dir, non-skill entries are quarantined under
@@ -129,7 +129,7 @@ pub fn link_agent(agent: &Agent, env: &Env) -> LinkOutcome {
                     error: format!("remove {}: {e}", agent_dir.display()),
                 };
             }
-            match create_dir_symlink(&canonical, &agent_dir) {
+            match create_dir_link(&canonical, &agent_dir) {
                 Ok(()) => LinkOutcome::Linked {
                     adopted,
                     quarantined,
@@ -295,9 +295,9 @@ fn existing_names(dirs: &[&Path]) -> HashSet<String> {
     names
 }
 
-/// Create the canonical symlink for an agent dir that is missing or empty.
+/// Create the canonical link for an agent dir that is missing or empty.
 fn link_dir(canonical: &Path, agent_dir: &Path) -> LinkOutcome {
-    match create_dir_symlink(canonical, agent_dir) {
+    match create_dir_link(canonical, agent_dir) {
         Ok(()) => LinkOutcome::Linked {
             adopted: Vec::new(),
             quarantined: Vec::new(),
@@ -307,29 +307,55 @@ fn link_dir(canonical: &Path, agent_dir: &Path) -> LinkOutcome {
     }
 }
 
-/// Create `link` as a symlink to `canonical`, using a relative target when possible.
-fn create_dir_symlink(canonical: &Path, link: &Path) -> Result<(), String> {
+/// Create `link` as a directory link to `canonical`: a relative symlink on
+/// Unix, a junction on Windows. The canonical dir is created up front, so a
+/// freshly created link is never dangling.
+fn create_dir_link(canonical: &Path, link: &Path) -> Result<(), String> {
+    if let Err(e) = fs::create_dir_all(canonical) {
+        return Err(format!("create {}: {e}", canonical.display()));
+    }
     if let Some(parent) = link.parent()
         && let Err(e) = fs::create_dir_all(parent)
     {
         return Err(format!("create {}: {e}", parent.display()));
     }
-    let target = relative_target(canonical, link);
     #[cfg(unix)]
-    let result = std::os::unix::fs::symlink(&target, link);
+    let result = std::os::unix::fs::symlink(relative_target(canonical, link), link);
     #[cfg(windows)]
-    let result = std::os::windows::fs::symlink_dir(&target, link);
+    let result = create_windows_dir_link(canonical, link);
     result.map_err(|e| {
+        // 1314 = ERROR_PRIVILEGE_NOT_HELD: the junction could not be created
+        // (e.g. the target sits on another drive) and the symlink fallback was
+        // refused for lack of Developer Mode.
+        let hint = if e.raw_os_error() == Some(1314) {
+            " (enable Windows Developer Mode, or keep the agent's dir on the \
+             same drive as the home directory)"
+        } else {
+            ""
+        };
         format!(
-            "symlink {} -> {}: {e} (on Windows, enable Developer Mode to allow symlinks)",
+            "link {} -> {}: {e}{hint}",
             link.display(),
-            target.display()
+            canonical.display()
         )
     })
 }
 
 /// Relative path from `link`'s parent to `canonical` (absolute fallback).
+#[cfg(unix)]
 fn relative_target(canonical: &Path, link: &Path) -> PathBuf {
     let base = link.parent().unwrap_or(Path::new("."));
     pathdiff::diff_paths(canonical, base).unwrap_or_else(|| canonical.to_path_buf())
+}
+
+/// Windows: a junction wherever one can reach the target — it needs no
+/// Developer Mode or admin rights. A junction stores its target in NT path
+/// space, where `/` is not a separator, and cannot cross drives; those rare
+/// corners fall back to a real directory symlink.
+#[cfg(windows)]
+fn create_windows_dir_link(canonical: &Path, link: &Path) -> std::io::Result<()> {
+    let target = std::path::absolute(canonical)?
+        .to_string_lossy()
+        .replace('/', "\\");
+    junction::create(&target, link).or_else(|_| std::os::windows::fs::symlink_dir(&target, link))
 }

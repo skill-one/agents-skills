@@ -21,3 +21,31 @@ jobs:
         run: cargo publish --allow-dirty
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  binaries:
+    name: Windows binaries
+    needs: publish
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Package
+        shell: pwsh
+        run: Compress-Archive -Path target/release/agents-skills.exe -DestinationPath "agents-skills-${env:GITHUB_REF_NAME}-x86_64-pc-windows-msvc.zip"
+
+      - name: Upload to the GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if (-not (gh release view "$env:GITHUB_REF_NAME" 2>$null)) {
+            gh release create "$env:GITHUB_REF_NAME" --verify-tag --generate-notes
+          }
+          gh release upload "$env:GITHUB_REF_NAME" "agents-skills-$env:GITHUB_REF_NAME-x86_64-pc-windows-msvc.zip" --clobber

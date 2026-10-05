@@ -3,7 +3,6 @@
 mod common;
 
 use predicates::prelude::*;
-use std::path::Path;
 
 use common::TestProject;
 
@@ -19,7 +18,7 @@ fn agent_requires_mode_flag() {
 }
 
 #[test]
-fn agent_link_creates_relative_dir_symlink() {
+fn agent_link_creates_a_dir_link_to_canonical() {
     let p = TestProject::new();
     // claude-code links even without ~/.claude (historical exception).
     p.skills()
@@ -30,9 +29,12 @@ fn agent_link_creates_relative_dir_symlink() {
 
     let link = p.path().join(".claude/skills");
     assert!(link.is_symlink());
+    // The raw target form is platform-specific (relative symlink on Unix,
+    // absolute junction on Windows); it must resolve to the canonical dir.
+    let canonical = p.path().join(".agents/skills");
     assert_eq!(
-        std::fs::read_link(&link).unwrap(),
-        Path::new("../.agents/skills")
+        std::fs::canonicalize(&link).unwrap(),
+        std::fs::canonicalize(&canonical).unwrap()
     );
 }
 

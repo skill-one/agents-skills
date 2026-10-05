@@ -29,7 +29,7 @@ agents-skills list                          # 查看已安装技能
 
 每个技能只在规范目录 `~/.agents/skills/<name>` 保存一份（被禁用的技能位于
 `~/.agents/disabled-skills/<name>`）。`agent --link` 让每个已安装 agent 的
-技能目录以符号链接指向它，因此之后安装的技能所有 agent 立即可见，无需同步。
+技能目录以目录链接指向它（Unix 上是符号链接，Windows 上是无需特权的目录联接 junction），因此之后安装的技能所有 agent 立即可见，无需同步。
 
 ```bash
 agents-skills add owner/repo/slug          # 从 GitHub 安装

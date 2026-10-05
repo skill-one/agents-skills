@@ -1,13 +1,12 @@
 //! Unit tests for the linking machinery.
 
 use std::fs;
-use std::path::Path;
 
 use crate::core::agents::get_agent;
 use crate::core::install::{install_skill, move_skill, sanitize_name, scan_installed};
 use crate::core::link::outcome::LinkOutcome;
 use crate::core::link::{is_agent_linked, link_agent, private_content, unlink_agent};
-use crate::core::test_utils::{env_at, skill_frontmatter, write_and_parse_skill};
+use crate::core::test_utils::{env_at, skill_frontmatter, symlink_dir, write_and_parse_skill};
 
 /// Sorted copy of a names vec (read_dir order is arbitrary).
 fn sorted(mut v: Vec<String>) -> Vec<String> {
@@ -16,7 +15,7 @@ fn sorted(mut v: Vec<String>) -> Vec<String> {
 }
 
 #[test]
-fn link_agent_creates_relative_symlink() {
+fn link_agent_creates_a_dir_link_to_canonical() {
     let tmp = tempfile::TempDir::new().unwrap();
     let env = env_at(&tmp);
     fs::create_dir_all(tmp.path().join(".cursor")).unwrap();
@@ -36,9 +35,12 @@ fn link_agent_creates_relative_symlink() {
     );
     let link = tmp.path().join(".cursor/skills");
     assert!(link.is_symlink());
+    // The raw target form is platform-specific — a relative symlink on Unix,
+    // an absolute junction on Windows — but it must resolve to the canonical dir.
+    let canonical = tmp.path().join(".agents/skills");
     assert_eq!(
-        fs::read_link(&link).unwrap(),
-        Path::new("../.agents/skills")
+        fs::canonicalize(&link).unwrap(),
+        fs::canonicalize(&canonical).unwrap()
     );
 }
 
@@ -111,11 +113,10 @@ fn link_agent_refuses_foreign_symlink() {
     let env = env_at(&tmp);
     fs::create_dir_all(tmp.path().join(".cursor")).unwrap();
     fs::create_dir_all(tmp.path().join("elsewhere")).unwrap();
-    std::os::unix::fs::symlink(
-        tmp.path().join("elsewhere"),
-        tmp.path().join(".cursor/skills"),
-    )
-    .unwrap();
+    symlink_dir(
+        &tmp.path().join("elsewhere"),
+        &tmp.path().join(".cursor/skills"),
+    );
     let agent = get_agent("cursor").unwrap();
 
     assert!(matches!(
@@ -134,11 +135,10 @@ fn link_agent_adopts_existing_skills_and_links() {
     // A symlinked skill pointing elsewhere (e.g. into a skills hub) is moved
     // as a link, preserving its target.
     fs::create_dir_all(tmp.path().join("hub/hub-skill")).unwrap();
-    std::os::unix::fs::symlink(
-        tmp.path().join("hub/hub-skill"),
-        tmp.path().join(".claude/skills/hub-skill"),
-    )
-    .unwrap();
+    symlink_dir(
+        &tmp.path().join("hub/hub-skill"),
+        &tmp.path().join(".claude/skills/hub-skill"),
+    );
     let agent = get_agent("claude-code").unwrap();
 
     match link_agent(agent, &env) {
@@ -156,9 +156,11 @@ fn link_agent_adopts_existing_skills_and_links() {
     assert!(tmp.path().join(".agents/skills/my-skill/SKILL.md").exists());
     let moved_link = tmp.path().join(".agents/skills/hub-skill");
     assert!(moved_link.is_symlink());
+    // The moved link still resolves to the hub skill (its raw target form is
+    // platform-specific).
     assert_eq!(
-        fs::read_link(&moved_link).unwrap(),
-        tmp.path().join("hub/hub-skill")
+        fs::canonicalize(&moved_link).unwrap(),
+        fs::canonicalize(tmp.path().join("hub/hub-skill")).unwrap()
     );
     assert!(tmp.path().join(".claude/skills").is_symlink());
     // Nothing was quarantined, so no `.misc` dir exists.
@@ -359,11 +361,10 @@ fn link_agent_drops_legacy_per_skill_links() {
     let skill = write_and_parse_skill(&src, "pdf");
     install_skill(&skill, &env).unwrap();
     fs::create_dir_all(tmp.path().join(".cursor/skills")).unwrap();
-    std::os::unix::fs::symlink(
-        tmp.path().join(".agents/skills/pdf"),
-        tmp.path().join(".cursor/skills/pdf"),
-    )
-    .unwrap();
+    symlink_dir(
+        &tmp.path().join(".agents/skills/pdf"),
+        &tmp.path().join(".cursor/skills/pdf"),
+    );
     let agent = get_agent("cursor").unwrap();
 
     match link_agent(agent, &env) {

@@ -55,7 +55,10 @@ fn split_frontmatter(raw: &str) -> Option<&str> {
 /// is optional and empty when absent; the flag marks `metadata.internal`.
 fn validated_frontmatter(dir: &Path) -> Option<(String, String, bool)> {
     let content = std::fs::read_to_string(dir.join("SKILL.md")).ok()?;
-    let data = split_frontmatter(&content)?;
+    // Files written by Windows tooling often carry a UTF-8 BOM; a leading BOM
+    // must not hide the frontmatter (the skill would silently disappear).
+    let content = content.strip_prefix('\u{feff}').unwrap_or(&content);
+    let data = split_frontmatter(content)?;
     let fm = noyalib::from_str::<Frontmatter>(data).ok()?;
     let name = fm.name?.trim().to_string();
     if name.is_empty() {
@@ -91,7 +94,7 @@ pub fn read_skill(dir: &Path) -> Option<Skill> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::test_utils::write_skill_md;
+    use crate::core::test_utils::{skill_frontmatter, write_skill_md};
 
     #[test]
     fn name_and_description_come_from_the_frontmatter() {
@@ -196,5 +199,20 @@ mod tests {
         )
         .unwrap();
         assert!(!read_skill(&dir).unwrap().internal);
+    }
+
+    #[test]
+    fn a_utf8_bom_does_not_hide_the_frontmatter() {
+        // Windows tooling (PowerShell `Out-File`, older Notepad) saves UTF-8
+        // with a BOM; the manifest must still be recognized.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path().join("bom");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("SKILL.md"),
+            format!("\u{feff}{}", skill_frontmatter("bom-skill")),
+        )
+        .unwrap();
+        assert_eq!(read_skill(&dir).unwrap().name, "bom-skill");
     }
 }

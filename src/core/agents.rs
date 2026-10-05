@@ -110,8 +110,15 @@ pub fn config_home() -> Result<PathBuf> {
 /// Resolve the user's home directory; an error when the platform cannot
 /// determine one — silently falling back to an empty path would resolve
 /// `~/.agents` against the current directory instead.
+///
+/// `$HOME` wins when set and non-empty (the documented override, and what
+/// tests use for a hermetic home), then the platform home — a known-folder
+/// lookup on Windows, where the `%HOME%` variable is not consulted by `dirs`.
 pub fn home() -> Result<PathBuf> {
-    dirs::home_dir()
+    std::env::var_os("HOME")
+        .filter(|h| !h.is_empty())
+        .map(PathBuf::from)
+        .or_else(dirs::home_dir)
         .ok_or_else(|| SkillsError::msg("cannot determine the home directory (set $HOME)"))
 }
 

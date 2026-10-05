@@ -63,20 +63,25 @@ pub fn sanitize_name(name: &str) -> String {
         prev_dash = false;
     }
 
-    let trimmed = folded.trim_matches(|c: char| c == '.' || c == '-');
-    // Truncate by bytes, never mid-character: the limit is a filesystem byte
-    // limit, and a partial UTF-8 sequence is not a valid name.
-    let mut slot = String::new();
-    for c in trimmed.chars() {
-        if slot.len() + c.len_utf8() > MAX_SLOT_BYTES {
-            break;
-        }
-        slot.push(c);
-    }
+    let folded = folded.trim_matches(|c: char| c == '.' || c == '-');
+    let mut slot = truncate_bytes(&windows_safe_slot(folded), MAX_SLOT_BYTES);
     if slot.is_empty() {
         slot = format!("skill-{}", short_digest(name));
     }
     slot
+}
+
+/// Truncate to `max` bytes, never mid-character: the limit is a filesystem
+/// byte limit, and a partial UTF-8 sequence is not a valid name.
+fn truncate_bytes(name: &str, max: usize) -> String {
+    let mut out = String::new();
+    for c in name.chars() {
+        if out.len() + c.len_utf8() > max {
+            break;
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// Stable 64-bit FNV-1a digest of `name`, rendered as eight hex digits — a
@@ -88,6 +93,27 @@ fn short_digest(name: &str) -> String {
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     }
     format!("{:08x}", hash as u32)
+}
+
+/// Windows reserves device names (`CON`, `AUX`, `COM1`, ...) case-insensitively,
+/// with or without an extension, and Win32 silently strips trailing dots and
+/// spaces — such slot names cannot round-trip on Windows. The adjustment is
+/// deterministic, so every platform derives the same slot for the same name.
+const WINDOWS_RESERVED: [&str; 22] = [
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+    "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+];
+
+/// Adjust a slot name Windows would reject: trailing dots/spaces (stripped by
+/// Win32 anyway) go away, and a reserved device base name gains a `_` suffix.
+fn windows_safe_slot(name: &str) -> String {
+    let trimmed = name.trim_end_matches(['.', ' ']);
+    let base = trimmed.split('.').next().unwrap_or(trimmed);
+    if WINDOWS_RESERVED.contains(&base.to_ascii_lowercase().as_str()) {
+        format!("{trimmed}_")
+    } else {
+        trimmed.to_owned()
+    }
 }
 
 /// Make a skill name addressable: lowercase, every space replaced by `-`,
@@ -165,8 +191,9 @@ pub fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
 
 /// Install a single skill into the canonical dir (the only place real files live).
 ///
-/// The installed directory keeps the source directory's own name, verbatim —
-/// while the skill's identity (what `list` reports and
+/// The installed directory keeps the source directory's own name — adjusted
+/// only where Windows would reject it ([`windows_safe_slot`]) — while the
+/// skill's identity (what `list` reports and
 /// `remove`/`enable`/`disable` select by) is the slugified frontmatter
 /// `name`. An already-installed skill — enabled or disabled — is **skipped**,
 /// never overwritten: `add` only ever adds. Update an installed skill with
@@ -179,23 +206,21 @@ pub fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
 pub fn install_skill(skill: &Skill, env: &Env) -> Result<InstallOutcome> {
     let slug = slugify(&skill.name);
     let canonical_base = canonical_skills_dir(env);
-    let slot = skill
-        .dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| {
+    let slot = windows_safe_slot(skill.dir.file_name().and_then(|n| n.to_str()).ok_or_else(
+        || {
             SkillsError::msg(format!(
                 "Cannot determine an install directory name from \"{}\".",
                 skill.dir.display()
             ))
-        })?;
+        },
+    )?);
     if slot.len() > MAX_SLOT_BYTES {
         return Err(SkillsError::msg(format!(
             "Install directory name \"{slot}\" exceeds the {MAX_SLOT_BYTES}-byte \
              filesystem limit; rename the source directory."
         )));
     }
-    let canonical_dir = canonical_base.join(slot);
+    let canonical_dir = canonical_base.join(&slot);
 
     // Source already inside the canonical dir → skip (avoid deleting the source).
     if paths_overlap(&skill.dir, &canonical_dir) {
@@ -454,6 +479,29 @@ mod tests {
         assert_eq!(blank, sanitize_name("  "));
         assert_ne!(blank, sanitize_name("***"));
         assert_ne!(blank, sanitize_name(""));
+    }
+
+    #[test]
+    fn sanitize_name_avoids_windows_reserved_device_names() {
+        assert_eq!(sanitize_name("AUX"), "aux_");
+        assert_eq!(sanitize_name("con"), "con_");
+        assert_eq!(sanitize_name("aux.txt"), "aux.txt_");
+        // Not reserved: unchanged.
+        assert_eq!(sanitize_name("com10"), "com10");
+        assert_eq!(sanitize_name("consult"), "consult");
+    }
+
+    #[test]
+    fn install_slot_avoids_windows_reserved_names() {
+        // A source dir named like a Windows device gets a deterministic slot
+        // the filesystem accepts, on every platform.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        let src = tmp.path().join("aux");
+        let skill = write_skill(&src, "aux");
+
+        install_skill(&skill, &env).unwrap();
+        assert!(tmp.path().join(".agents/skills/aux_/SKILL.md").exists());
     }
 
     #[test]

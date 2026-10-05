@@ -128,12 +128,12 @@ upstream table does not carry this field — `scripts/sync-agents.sh` merges
 resolved through `Env` at manager construction, so library sandboxes stay
 hermetic.
 
-Whether an agent needs a symlink is decided by `is_native` in `agents.rs`: the
+Whether an agent needs a link is decided by `is_native` in `agents.rs`: the
 resolved `skills_dir` spec is compared against `~/.agents/skills` — only agents
 whose dir equals it (e.g. cline, warp) are native and need no link; agents with
 a vendor-specific dir (e.g. Antigravity's `~/.gemini/config/skills`) get a
-real directory symlink. The `universal` pseudo-agent carries `"detect": []` so
-it is never detected as installed.
+directory link (a symlink on Unix, a junction on Windows). The `universal`
+pseudo-agent carries `"detect": []` so it is never detected as installed.
 
 ## Development & testing
 

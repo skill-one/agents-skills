@@ -41,3 +41,14 @@ pub fn write_and_parse_skill(dir: &Path, name: &str) -> Skill {
     std::fs::write(&md, skill_frontmatter(name)).expect("write SKILL.md");
     read_skill(dir).expect("read skill dir")
 }
+
+/// Create a directory symlink in a test, on any platform: a real symlink
+/// where the platform and privileges allow, a junction on Windows otherwise.
+pub fn symlink_dir(target: &Path, link: &Path) {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target, link).expect("create symlink");
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_dir(target, link)
+        .or_else(|_| junction::create(target, link))
+        .expect("create dir link");
+}

@@ -25,10 +25,22 @@ ureq = { version = "3", features = ["gzip"] }
 dirs = "7"
 tempfile = "3"
 thiserror = "2"
-pathdiff = "0.2"
 tar = "0.4"
 flate2 = "1"
 jiff = { version = "0.2.37", default-features = false, features = ["std", "tz-system"] }
+
+[target.'cfg(unix)'.dependencies]
+# Relative symlink targets for agent dir links.
+pathdiff = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# Directory junctions: agent dir links that need no Developer Mode or admin rights.
+junction = "2"
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+
+[build-dependencies]
+# Windows application manifest (long-path aware, UTF-8 code page).
+embed-manifest = "1.5"
 
 [dev-dependencies]
 assert_cmd = "2"
