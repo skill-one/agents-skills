@@ -9,6 +9,17 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 ## [Unreleased]
 
+## [0.28.0] — 2026-10-05
+
+### Added
+
+- `add --force` (`-f`): support overwriting and updating already installed skills instead of skipping them.
+- HTTP client connect timeout (15s) and global timeout (60s) to prevent hanging on degraded connections.
+
+### Changed
+
+- Stream GitHub tarballs directly into temp unpack directory instead of buffering the whole archive into memory.
+
 ## [0.27.0] — 2026-10-05
 
 ### Added
@@ -644,7 +655,10 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 - chore: upgrade git2 to 0.21 to fix RUSTSEC advisories.
 - chore: dual license, GitHub Actions, crates.io release metadata.
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/skill-one/agents-skills/compare/v0.27.0...v0.28.0
+[0.27.0]: https://github.com/skill-one/agents-skills/compare/v0.26.0...v0.27.0
+[0.26.0]: https://github.com/skill-one/agents-skills/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/skill-one/agents-skills/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/skill-one/agents-skills/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/skill-one/agents-skills/compare/v0.22.0...v0.23.0

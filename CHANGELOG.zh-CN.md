@@ -9,6 +9,17 @@
 
 ## [Unreleased]
 
+## [0.28.0] — 2026-10-05
+
+### 新增
+
+- `add --force` (`-f`)：支持直接覆盖更新已安装的技能，无需手动先执行 `remove`。
+- 为 HTTP 客户端配置 15 秒连接超时与 60 秒全局传输超时，防止弱网时无响应挂起。
+
+### 变更
+
+- GitHub tarball 改为流式边下载边解包到临时目录，不再将整个压缩包缓存进内存。
+
 ## [0.27.0] — 2026-10-05
 
 ### 新增
@@ -549,7 +560,10 @@
 - chore:升级 git2 至 0.21 以修复 RUSTSEC 安全通告。
 - chore:双许可证、GitHub Actions、crates.io 发布元数据。
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/skill-one/agents-skills/compare/v0.27.0...v0.28.0
+[0.27.0]: https://github.com/skill-one/agents-skills/compare/v0.26.0...v0.27.0
+[0.26.0]: https://github.com/skill-one/agents-skills/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/skill-one/agents-skills/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/skill-one/agents-skills/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/skill-one/agents-skills/compare/v0.22.0...v0.23.0
