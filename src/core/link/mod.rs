@@ -164,7 +164,7 @@ pub fn unlink_agent(agent: &Agent, env: &Env) -> LinkOutcome {
                 // A foreign symlink: leave it alone.
                 return LinkOutcome::NotLinked;
             }
-            if let Err(e) = fs::remove_file(&agent_dir) {
+            if let Err(e) = remove_link(&agent_dir) {
                 return LinkOutcome::Failed {
                     error: e.to_string(),
                 };
@@ -179,6 +179,20 @@ pub fn unlink_agent(agent: &Agent, env: &Env) -> LinkOutcome {
         }
         _ => LinkOutcome::NotLinked,
     }
+}
+
+/// Remove a directory link — the link itself, never its target.
+///
+/// Windows junctions are mount points: Win32 refuses `DeleteFile` on them and
+/// demands `RemoveDirectory`, which deletes a junction's or directory
+/// symlink's reparse point without touching the target. Unix unlinks any
+/// symlink with `remove_file`.
+pub(crate) fn remove_link(link: &Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    let result = fs::remove_dir(link).or_else(|_| fs::remove_file(link));
+    #[cfg(not(windows))]
+    let result = fs::remove_file(link);
+    result
 }
 
 /// Classify the private content of an unlinked agent's skills dir:

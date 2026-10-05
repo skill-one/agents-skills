@@ -275,9 +275,15 @@ fn unique_suffix() -> u128 {
     nanos ^ (std::process::id() as u128)
 }
 
-/// Remove a file or directory (whatever is at the path), ignoring errors.
+/// Remove a file, directory, or link (whatever is at the path), ignoring errors.
+/// Links — junctions on Windows included — are removed as the link itself.
 fn remove_path(p: &Path) {
-    if p.symlink_metadata().map(|m| m.is_dir()).unwrap_or(false) {
+    let Ok(meta) = p.symlink_metadata() else {
+        return;
+    };
+    if meta.is_symlink() {
+        let _ = crate::core::link::remove_link(p);
+    } else if meta.is_dir() {
         let _ = fs::remove_dir_all(p);
     } else {
         let _ = fs::remove_file(p);

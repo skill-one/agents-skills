@@ -63,6 +63,11 @@ fn is_local_path(input: &str) -> bool {
     if p.is_absolute() {
         return true;
     }
+    // A rooted path (`/tmp`, `\tmp`) names the current drive's root on
+    // Windows — still a local path; on Unix rooted equals absolute.
+    if p.has_root() {
+        return true;
+    }
     if input.starts_with("./") || input.starts_with("../") {
         return true;
     }
