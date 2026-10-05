@@ -47,6 +47,9 @@ pub struct AddArgs {
     /// Pin a branch, tag, or full commit SHA (GitHub sources only)
     #[arg(long = "ref", value_name = "ref")]
     pub reference: Option<String>,
+    /// Overwrite an already installed skill instead of skipping it
+    #[arg(short = 'f', long = "force")]
+    pub force: bool,
 }
 
 #[derive(Debug, Args)]

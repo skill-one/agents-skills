@@ -203,7 +203,10 @@ pub fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
 ///
 /// [`SkillsError`] when the install slot name cannot be derived, exceeds the
 /// filesystem's 255-byte name limit, or the copy into the canonical dir fails.
-pub fn install_skill(skill: &Skill, env: &Env) -> Result<InstallOutcome> {
+/// Install a single skill into the canonical dir (the only place real files live).
+///
+/// An already-installed skill is skipped unless `force` is true.
+pub fn install_skill(skill: &Skill, force: bool, env: &Env) -> Result<InstallOutcome> {
     let slug = slugify(&skill.name);
     let canonical_base = canonical_skills_dir(env);
     let slot = windows_safe_slot(skill.dir.file_name().and_then(|n| n.to_str()).ok_or_else(
@@ -230,13 +233,14 @@ pub fn install_skill(skill: &Skill, env: &Env) -> Result<InstallOutcome> {
         });
     }
 
-    // Already installed, enabled or disabled → skip. Installing anyway would
-    // silently discard local edits, and over a *disabled* skill it would leave a
-    // duplicate copy behind (both dirs hold the same skill). Both dirs are matched
-    // by normalized name, so an adopted copy under an unnormalized directory name
-    // (e.g. `PDF Master` for `pdf-master`) counts as installed too.
+    // Already installed, enabled or disabled → skip (unless force is requested).
+    // Both dirs are matched by normalized name, so an adopted copy under an
+    // unnormalized directory name (e.g. `PDF Master` for `pdf-master`) counts as installed too.
     let disabled_base = disabled_skills_dir(env);
-    if holds_skill(&canonical_base, &slug) || holds_skill(&disabled_base, &slug) {
+    let already_installed = holds_skill(&canonical_base, &slug)
+        || holds_skill(&disabled_base, &slug)
+        || canonical_dir.symlink_metadata().is_ok();
+    if already_installed && !force {
         return Ok(InstallOutcome {
             canonical_path: canonical_dir,
             skipped: true,
@@ -250,6 +254,10 @@ pub fn install_skill(skill: &Skill, env: &Env) -> Result<InstallOutcome> {
     let install = (|| -> Result<()> {
         fs::create_dir_all(&staging)?;
         copy_directory(&skill.dir, &staging)?;
+        if force && already_installed {
+            remove_skill(&slug, env);
+            remove_path(&canonical_dir);
+        }
         fs::rename(&staging, &canonical_dir)?;
         Ok(())
     })();
@@ -448,6 +456,30 @@ mod tests {
 
     fn write_skill(dir: &Path, name: &str) -> Skill {
         write_and_parse_skill(dir, name)
+    }
+
+    fn install_skill(skill: &Skill, env: &Env) -> Result<InstallOutcome> {
+        super::install_skill(skill, false, env)
+    }
+
+    #[test]
+    fn install_skill_force_overwrites_existing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let env = env_at(&tmp);
+        let src = tmp.path().join("src");
+        let skill = write_skill(&src, "pdf");
+
+        // First install.
+        let r1 = super::install_skill(&skill, false, &env).unwrap();
+        assert!(!r1.skipped);
+
+        // Without force, skipped.
+        let r2 = super::install_skill(&skill, false, &env).unwrap();
+        assert!(r2.skipped);
+
+        // With force, overwrites.
+        let r3 = super::install_skill(&skill, true, &env).unwrap();
+        assert!(!r3.skipped);
     }
 
     #[test]

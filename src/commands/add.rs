@@ -11,6 +11,7 @@ pub fn run(manager: &Manager, args: AddArgs) -> Result<()> {
     let req = AddRequest {
         source: args.source,
         reference: args.reference,
+        force: args.force,
     };
 
     let outcome = match manager.add(&req) {
@@ -53,7 +54,9 @@ fn render(env: &Env, req: &AddRequest, outcome: &AddOutcome) {
     println!();
     if outcome.skipped {
         println!("{YELLOW}•{RESET} {slug} {DIM}skipped (already installed){RESET}");
-        println!("{DIM}To replace an installed skill: remove it first, then add again.{RESET}");
+        println!(
+            "{DIM}To replace an installed skill: remove it first, then add again (or use --force).{RESET}"
+        );
     } else {
         println!(
             "{GREEN}✓{RESET} {}",

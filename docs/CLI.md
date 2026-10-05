@@ -14,7 +14,7 @@ directory `~/.agents/skills`; disabled skills are parked in
 Install exactly one skill from a local directory or from GitHub.
 
 ```
-agents-skills add <source> [--ref <ref>]
+agents-skills add <source> [--ref <ref>] [--force]
 ```
 
 `<source>` is either a local skill directory or the GitHub id
@@ -34,27 +34,29 @@ the skill's identity, what `list` reports and `remove`/`enable`/`disable`
 select by, is the slug; the declared frontmatter `name` is shown alongside
 as a display rendition (`displayName` in `list --json`).
 
-| Option        | Description                                            |
-| ------------- | ------------------------------------------------------ |
-| `--ref <ref>` | Pin a branch, tag, or full commit SHA (GitHub sources only) |
+| Option          | Description                                                 |
+| --------------- | ----------------------------------------------------------- |
+| `--ref <ref>`   | Pin a branch, tag, or full commit SHA (GitHub sources only) |
+| `-f, --force`   | Overwrite an already installed skill instead of skipping it |
 
 ```bash
 agents-skills add ./my-skill                        # install a local skill
 agents-skills add anthropics/skills/pdf             # install one skill from GitHub
 agents-skills add anthropics/skills/pdf --ref v1.2  # pin a branch, tag, or full commit SHA
+agents-skills add anthropics/skills/pdf --force     # overwrite an already installed skill
 ```
 
 Remote installs are a single request: the whole repository tarball is
-downloaded from `codeload.github.com`, unpacked into a temp dir, and the
-matched skill directory is selected locally. The GitHub REST API is never
+streamed from `codeload.github.com` into a temp dir without high memory overhead,
+and the matched skill directory is selected locally. The GitHub REST API is never
 used, so there is no API rate limit; public repositories only, and Git LFS
 files install as their pointer stubs. Without `--ref` the default branch is
 used. Any other source form
 (bare `owner/repo`, full URLs, subpaths, GitLab/SSH, HTTPS archives) is rejected
 with a message naming the supported syntax.
 
-`add` never overwrites: a name already installed — enabled or disabled — is
-reported `skipped`; `remove` it first to replace it. Run `agent --link` after
+By default `add` never overwrites: a name already installed — enabled or disabled — is
+reported `skipped`; pass `--force` (or `-f`) to overwrite and update it, or `remove` it first. Run `agent --link` after
 installing to make the skill visible to agents.
 
 ## remove

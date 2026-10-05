@@ -28,6 +28,8 @@ pub struct AddRequest {
     pub source: String,
     /// Branch, tag, or full commit SHA to pin (GitHub sources only; `None` = default branch).
     pub reference: Option<String>,
+    /// Overwrite an already installed skill instead of skipping it.
+    pub force: bool,
 }
 
 impl AddRequest {

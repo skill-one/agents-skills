@@ -27,8 +27,8 @@ use crate::core::discover::{Skill, read_skill};
 use crate::core::install::slugify;
 use crate::error::{Result, SkillsError};
 
-/// Injected HTTP GET: returns the response body of `url`.
-type Get<'a> = &'a (dyn Fn(&str) -> Result<Vec<u8>> + Sync);
+/// Injected HTTP GET: returns a streaming reader of the response body of `url`.
+type Get<'a> = &'a (dyn Fn(&str) -> Result<Box<dyn Read>> + Sync);
 
 /// Fetch the skill selected by `owner/repo/{skill_slug}` into a fresh temp dir.
 ///
@@ -42,7 +42,7 @@ pub fn fetch_skill(
     reference: Option<&str>,
 ) -> Result<(tempfile::TempDir, Skill)> {
     let slug = format!("{owner}/{repo}");
-    match fetch_skill_with(owner, repo, skill_slug, reference, &http_get) {
+    match fetch_skill_with(owner, repo, skill_slug, reference, &http_get_stream) {
         Ok(Some(v)) => Ok(v),
         Ok(None) => Err(SkillsError::msg(not_found_message(skill_slug, &slug))),
         Err(e) => Err(decorate_download_error(e, &slug)),
@@ -74,6 +74,21 @@ fn decorate_download_error(e: SkillsError, slug: &str) -> SkillsError {
     SkillsError::msg(format!("{prefix} {e}"))
 }
 
+/// Clear the contents of a directory (used before retrying an unpack attempt).
+fn clear_dir(dir: &Path) -> Result<()> {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let _ = fs::remove_dir_all(&path);
+            } else {
+                let _ = fs::remove_file(&path);
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Download the repository tarball (one request per ref form, at most two) and
 /// unpack it into `root`, returning the unpacked repository root directory.
 fn download_repo(
@@ -85,11 +100,15 @@ fn download_repo(
 ) -> Result<PathBuf> {
     let mut last: Option<SkillsError> = None;
     for form in ref_forms(reference) {
-        match get(&archive_url(owner, repo, &form)) {
-            Ok(bytes) => {
-                unpack_archive(&bytes, root)?;
-                return repo_root_of(root, repo);
-            }
+        let url = archive_url(owner, repo, &form);
+        let mut attempt = || -> Result<PathBuf> {
+            clear_dir(root)?;
+            let stream = get(&url)?;
+            unpack_archive(stream, root)?;
+            repo_root_of(root, repo)
+        };
+        match with_retry(3, &mut attempt) {
+            Ok(p) => return Ok(p),
             Err(e) => {
                 // Only a 404 falls through to the next ref form (branch → tag);
                 // anything else is a real failure.
@@ -135,14 +154,14 @@ fn is_http_status(e: &SkillsError, status: u16) -> bool {
     )
 }
 
-/// Unpack a gzipped tar archive into `root`.
+/// Unpack a gzipped tar archive from a streaming reader into `root`.
 ///
 /// Only regular files are unpacked: directories are created on demand, and
 /// symlinks, hardlinks, and metadata headers are never part of a skill.
 /// `unpack_in` refuses entries whose path would escape `root`, so a crafted
 /// archive cannot write outside the temp dir.
-fn unpack_archive(bytes: &[u8], root: &Path) -> Result<()> {
-    let mut archive = Archive::new(GzDecoder::new(bytes));
+fn unpack_archive<R: Read>(reader: R, root: &Path) -> Result<()> {
+    let mut archive = Archive::new(GzDecoder::new(reader));
     archive.set_preserve_permissions(true);
     for entry in archive.entries()? {
         let mut entry = entry?;
@@ -279,6 +298,9 @@ fn agent() -> &'static ureq::Agent {
         if let Some(proxy) = ureq::Proxy::try_from_env() {
             builder = builder.proxy(Some(proxy));
         }
+        builder = builder
+            .timeout_connect(Some(std::time::Duration::from_secs(15)))
+            .timeout_global(Some(std::time::Duration::from_secs(60)));
         ureq::Agent::new_with_config(builder.build())
     })
 }
@@ -321,26 +343,13 @@ fn retriable(e: &SkillsError) -> bool {
 /// Uses the shared proxy-aware agent and retries transient failures. No
 /// authentication: only public repositories are supported. The body is capped
 /// at [`MAX_TARBALL_BYTES`] so a runaway response cannot exhaust memory.
-fn http_get(url: &str) -> Result<Vec<u8>> {
-    let attempt = || -> Result<Vec<u8>> {
-        let mut resp = agent()
-            .get(url)
-            .header("User-Agent", "agents-skills")
-            .call()?;
-        let mut buf = Vec::new();
-        resp.body_mut()
-            .as_reader()
-            .take(MAX_TARBALL_BYTES)
-            .read_to_end(&mut buf)?;
-        if buf.len() as u64 >= MAX_TARBALL_BYTES {
-            return Err(SkillsError::msg(format!(
-                "response from {url} exceeds the {} MiB limit",
-                MAX_TARBALL_BYTES / (1024 * 1024)
-            )));
-        }
-        Ok(buf)
-    };
-    with_retry(3, attempt)
+fn http_get_stream(url: &str) -> Result<Box<dyn Read>> {
+    let resp = agent()
+        .get(url)
+        .header("User-Agent", "agents-skills")
+        .call()?;
+    let reader = resp.into_body().into_reader().take(MAX_TARBALL_BYTES);
+    Ok(Box::new(reader))
 }
 
 /// Largest accepted response body: 512 MiB, far above any real skill repo.
@@ -384,7 +393,7 @@ mod tests {
     type UrlLog = std::sync::Arc<Mutex<Vec<String>>>;
 
     /// A fake HTTP GET, injectable into `fetch_skill_with`.
-    type FakeGet = Box<dyn Fn(&str) -> Result<Vec<u8>> + Send + Sync>;
+    type FakeGet = Box<dyn Fn(&str) -> Result<Box<dyn Read>> + Send + Sync>;
 
     /// An injected `get` serving `body` for every URL ending in one of `forms`,
     /// and a 404 for everything else. Records the requested URLs in order.
@@ -392,10 +401,10 @@ mod tests {
         let forms: Vec<String> = forms.iter().map(|f| (*f).to_string()).collect();
         let requested = std::sync::Arc::new(Mutex::new(Vec::new()));
         let urls = requested.clone();
-        let get = move |url: &str| -> Result<Vec<u8>> {
+        let get = move |url: &str| -> Result<Box<dyn Read>> {
             requested.lock().unwrap().push(url.to_string());
             if forms.iter().any(|f| url.ends_with(f.as_str())) {
-                Ok(body.clone())
+                Ok(Box::new(std::io::Cursor::new(body.clone())))
             } else {
                 Err(SkillsError::Http(Box::new(ureq::Error::StatusCode(404))))
             }
@@ -652,7 +661,7 @@ mod tests {
 
     #[test]
     fn fetch_public_api_error_propagates() {
-        let get = |url: &str| -> Result<Vec<u8>> {
+        let get = |url: &str| -> Result<Box<dyn Read>> {
             Err(SkillsError::msg(format!("network down: {url}")))
         };
         assert!(fetch_skill_with("acme", "skills", "pdf", None, &get).is_err());
@@ -752,7 +761,7 @@ mod tests {
 
     #[test]
     fn unknown_repo_or_ref_is_a_clean_not_found_error() {
-        let get = |url: &str| -> Result<Vec<u8>> {
+        let get = |url: &str| -> Result<Box<dyn Read>> {
             let _ = url;
             Err(SkillsError::Http(Box::new(ureq::Error::StatusCode(404))))
         };
@@ -847,7 +856,7 @@ mod tests {
         let bytes = gz.finish().unwrap();
 
         let tmp = tempfile::TempDir::new().unwrap();
-        let _ = unpack_archive(&bytes, tmp.path());
+        let _ = unpack_archive(&bytes[..], tmp.path());
         assert!(!tmp.path().parent().unwrap().join("evil.txt").exists());
     }
 
@@ -888,7 +897,7 @@ mod tests {
     #[test]
     fn deterministic_client_errors_are_not_retried() {
         let calls = Mutex::new(0);
-        let get = |url: &str| -> Result<Vec<u8>> {
+        let get = |url: &str| -> Result<Box<dyn Read>> {
             let _ = url;
             *calls.lock().unwrap() += 1;
             Err(SkillsError::Http(Box::new(ureq::Error::StatusCode(404))))

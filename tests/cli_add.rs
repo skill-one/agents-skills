@@ -58,6 +58,45 @@ fn add_skips_an_already_installed_skill() {
 }
 
 #[test]
+fn add_force_flag_overwrites_existing_skill() {
+    let p = TestProject::new();
+    let src = p.write_skill_source("pdf", "pdf");
+
+    p.skills()
+        .args(["add", src.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Modify the source with new content.
+    std::fs::write(src.join("extra.txt"), "new content").unwrap();
+
+    // Without force, skipped.
+    p.skills()
+        .args(["add", src.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("skipped (already installed)"));
+    p.assert_absent(".agents/skills/pdf/extra.txt");
+
+    // With --force, overwrites and updates.
+    p.skills()
+        .args(["add", src.to_str().unwrap(), "--force"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Installed 1 skill"));
+    p.assert_exists(".agents/skills/pdf/extra.txt");
+
+    // With -f, also works.
+    std::fs::write(src.join("extra2.txt"), "another update").unwrap();
+    p.skills()
+        .args(["add", src.to_str().unwrap(), "-f"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Installed 1 skill"));
+    p.assert_exists(".agents/skills/pdf/extra2.txt");
+}
+
+#[test]
 fn subcommand_aliases_are_rejected() {
     let p = TestProject::new();
     let src = p.write_skill_source("pdf", "pdf");

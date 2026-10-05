@@ -217,8 +217,8 @@ impl Manager {
         }
 
         // Install into the canonical dir (the only place real files live).
-        // An already-installed name (enabled or disabled) is skipped, not replaced.
-        let result = install_skill(&skill, &self.env)?;
+        // An already-installed name (enabled or disabled) is skipped unless force is true.
+        let result = install_skill(&skill, req.force, &self.env)?;
 
         Ok(AddOutcome {
             source: parsed,

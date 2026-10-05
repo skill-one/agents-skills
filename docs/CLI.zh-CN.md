@@ -13,7 +13,7 @@
 从本地目录或 GitHub 安装恰好一个技能。
 
 ```
-agents-skills add <source> [--ref <ref>]
+agents-skills add <source> [--ref <ref>] [--force]
 ```
 
 `<source>` 要么是本地技能目录，要么是 GitHub id `owner/repo/slug`，指定 GitHub
@@ -30,24 +30,25 @@ id 的最后一段是技能的 **slug**：由 frontmatter `name` slug 化而来�
 依据）是 slug；frontmatter 中的原始 `name` 仅作展示（`list --json` 中的
 `displayName`）。
 
-| 选项          | 说明                                          |
-| ------------- | --------------------------------------------- |
-| `--ref <ref>` | 指定分支、标签或完整 commit SHA（仅 GitHub 来源） |
+| 选项            | 说明                                          |
+| --------------- | --------------------------------------------- |
+| `--ref <ref>`   | 指定分支、标签或完整 commit SHA（仅 GitHub 来源） |
+| `-f, --force`   | 覆盖已安装的同名技能，而非跳过                   |
 
 ```bash
 agents-skills add ./my-skill                        # 安装本地技能
 agents-skills add anthropics/skills/pdf             # 从 GitHub 安装一个技能
 agents-skills add anthropics/skills/pdf --ref v1.2  # 指定分支、标签或完整 commit SHA
+agents-skills add anthropics/skills/pdf --force     # 覆盖安装同名技能
 ```
 
-远程安装是单次请求：从 `codeload.github.com` 下载整个仓库的 tarball，解包到
-临时目录后在本地选择匹配的技能目录。完全不使用 GitHub REST API，因此不存在
+远程安装是单次请求：从 `codeload.github.com` 流式下载整个仓库的 tarball 并解包到
+临时目录，在本地选择匹配的技能目录（避免整包读入内存）。完全不使用 GitHub REST API，因此不存在
 API 速率限制；仅支持公开仓库，Git LFS 文件以指针占位文件形式安装。不加
 `--ref` 时使用默认分支。其他来源形式（裸 `owner/repo`、完整
 URL、子路径、GitLab/SSH、HTTPS 压缩包）均会被拒绝，报错会指明受支持的语法。
 
-`add` 绝不覆盖：同名技能已安装（无论启用或禁用）时报告 `skipped`；想替换请先
-`remove`。安装后运行 `agent --link` 让 agent 可见。
+默认情况下 `add` 绝不覆盖：同名技能已安装（无论启用或禁用）时报告 `skipped`；可传入 `--force`（或 `-f`）直接覆盖更新，或先 `remove`。安装后运行 `agent --link` 让 agent 可见。
 
 ## remove
 

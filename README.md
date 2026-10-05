@@ -63,8 +63,8 @@ Key behaviors:
   downloads the repository tarball from `codeload.github.com` — the GitHub
   REST API is never used, so there is no API rate limit. Public repositories
   only; Git LFS files install as their pointer stubs.
-- **Never overwrite** — a skill already installed (enabled or disabled) is
-  reported `skipped`; `remove` it first to replace it.
+- **Never overwrite** — by default a skill already installed (enabled or disabled) is
+  reported `skipped`; pass `--force` to overwrite it, or `remove` it first.
 - **Linking adopts existing content one-way** — skill directories move into
   the canonical directory, other files into its `.misc/<agent>/`, and name
   clashes keep the existing copy. `--unlink` disconnects but does not move

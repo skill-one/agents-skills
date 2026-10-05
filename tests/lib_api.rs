@@ -109,6 +109,47 @@ fn lib_add_skips_an_already_installed_skill() {
 }
 
 #[test]
+fn lib_add_force_overwrites_existing_skill() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let (manager, home) = manager_at(&tmp);
+
+    let src = write_skill_source(tmp.path(), "pdf", "pdf");
+    assert!(
+        !manager
+            .add(&AddRequest {
+                source: src.display().to_string(),
+                ..Default::default()
+            })
+            .unwrap()
+            .skipped
+    );
+
+    std::fs::write(src.join("extra.txt"), "new file").unwrap();
+
+    // With force: false, skipped.
+    let skipped = manager
+        .add(&AddRequest {
+            source: src.display().to_string(),
+            force: false,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(skipped.skipped);
+    assert!(!home.join(".agents/skills/pdf/extra.txt").exists());
+
+    // With force: true, overwrites.
+    let forced = manager
+        .add(&AddRequest {
+            source: src.display().to_string(),
+            force: true,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(!forced.skipped);
+    assert!(home.join(".agents/skills/pdf/extra.txt").exists());
+}
+
+#[test]
 fn lib_invalid_agent_returns_error() {
     let tmp = tempfile::TempDir::new().unwrap();
     let (manager, _home) = manager_at(&tmp);
