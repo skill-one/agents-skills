@@ -9,6 +9,29 @@
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-10-05
+
+### 新增
+
+- Windows 平台支持,由新增的 `windows-latest` CI 任务实测验证,并在 Release 中
+  发布二进制产物:
+  - agent 目录链接在 Windows 上使用 **junction**(无需 Developer Mode 或管理员
+    权限;跨盘目标回退为真实目录符号链接)。链接前先创建规范目录,链接永不悬空;
+    删除使用平台正确的调用(Win32 拒绝对 junction 执行 `DeleteFile`)。
+  - 忽略 SKILL.md frontmatter 之前的 UTF-8 BOM(Windows 工具会写 BOM,否则技能
+    会从 `list`/`add` 中静默消失)。
+  - 识别 Windows 形式的本地路径:`.\skill`、`..\skill`,以及 rooted 路径
+    (`/tmp/foo` —— 当前盘的根目录)。
+  - 安装槽位避开 Windows 保留设备名(`CON`、`AUX`、`COM1`–`COM9`、`LPT1`–`LPT9`,
+    含带扩展名的形式)和尾部点/空格,在所有平台上确定性一致。
+  - ANSI 样式在传统控制台上启用虚拟终端处理(Windows Terminal 与管道输出无需
+    任何处理)。
+  - 二进制内嵌 longPathAware、UTF-8 code page 的应用清单。
+  - 所有平台都优先采用 `$HOME` 作为 home 目录(Windows 的 Known Folder 查找会
+    忽略该变量,曾导致文档宣称的覆盖机制与测试沙箱失效)。
+
+## [0.26.0] — 2026-09-30
+
 ### 变更
 
 - **(breaking)** `Manager::remove`/`disable`/`enable` 共用一套选择模型：

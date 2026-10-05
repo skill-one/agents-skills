@@ -9,6 +9,33 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-10-05
+
+### Added
+
+- Windows platform support, verified by a new `windows-latest` CI job and
+  published as release binaries:
+  - agent dir links are **junctions** on Windows — no Developer Mode or admin
+    rights needed; a cross-drive target falls back to a real directory
+    symlink. The canonical dir is created before linking, so a fresh link is
+    never dangling, and links are removed with the platform-correct call
+    (Win32 refuses `DeleteFile` on junctions).
+  - a UTF-8 BOM before the SKILL.md frontmatter is ignored (Windows tooling
+    writes BOMs; the skill would silently disappear from `list`/`add`).
+  - local paths are recognized in Windows forms: `.\skill`, `..\skill`, and
+    rooted paths (`/tmp/foo` — the current drive's root).
+  - install slots avoid Windows reserved device names (`CON`, `AUX`, `COM1`–
+    `COM9`, `LPT1`–`LPT9`, with or without an extension) and trailing
+    dots/spaces, deterministically on every platform.
+  - ANSI styles switch the legacy console to virtual-terminal processing
+    (Windows Terminal and piped output need nothing).
+  - the binary embeds a long-path-aware, UTF-8 code-page application manifest.
+  - `$HOME` is honored as the home directory on every platform (the Windows
+    known-folder lookup ignores it, which broke the documented override and
+    hermetic test sandboxes).
+
+## [0.26.0] — 2026-09-30
+
 ### Changed
 
 - **(breaking)** `Manager::remove`/`disable`/`enable` share one selection
