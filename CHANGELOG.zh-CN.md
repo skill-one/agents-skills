@@ -9,6 +9,8 @@
 
 ## [Unreleased]
 
+## [0.28.1] — 2026-10-08
+
 ### 变更
 
 - GitHub 技能选择现在也会扫描以 `.` 开头的隐藏目录，技能可以位于诸如 `.agents/` 这样的点目录下。
@@ -565,7 +567,8 @@
 - chore:升级 git2 至 0.21 以修复 RUSTSEC 安全通告。
 - chore:双许可证、GitHub Actions、crates.io 发布元数据。
 
-[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/skill-one/agents-skills/compare/v0.28.1...HEAD
+[0.28.1]: https://github.com/skill-one/agents-skills/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/skill-one/agents-skills/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/skill-one/agents-skills/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/skill-one/agents-skills/compare/v0.25.0...v0.26.0
