@@ -9,6 +9,11 @@ For the Chinese version see [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 ## [Unreleased]
 
+### Changed
+
+- GitHub skill selection now scans hidden (`.`-prefixed) directories too, so a skill may live under a dot-directory such as `.agents/`.
+- `add` now copies a skill directory verbatim: the `metadata.json`, `.git`, `__pycache__`, and `__pypackages__` exclusions are dropped, so nothing is silently omitted.
+
 ## [0.28.0] — 2026-10-05
 
 ### Added

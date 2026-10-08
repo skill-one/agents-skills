@@ -242,7 +242,8 @@ fn select_skill(repo_root: &Path, skill_slug: &str) -> Result<Option<Skill>> {
 }
 
 /// Every directory under `dir` (relative path `rel`) that directly contains a
-/// `SKILL.md`. Hidden entries are never skills.
+/// `SKILL.md`. Hidden entries (names starting with `.`) are scanned like any
+/// other directory: a skill may legitimately live under a dot-directory.
 fn collect_manifest_dirs(dir: &Path, rel: &str, out: &mut Vec<(usize, String)>) -> Result<()> {
     if dir.join("SKILL.md").is_file() {
         let depth = if rel.is_empty() {
@@ -254,10 +255,10 @@ fn collect_manifest_dirs(dir: &Path, rel: &str, out: &mut Vec<(usize, String)>) 
     }
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if name.starts_with('.') || !entry.file_type()?.is_dir() {
+        if !entry.file_type()?.is_dir() {
             continue;
         }
+        let name = entry.file_name().to_string_lossy().into_owned();
         let child_rel = if rel.is_empty() {
             name
         } else {
@@ -673,6 +674,28 @@ mod tests {
         assert!(msg.contains("No skill with slug \"zzz\""), "{msg}");
         assert!(msg.contains("acme/skills"), "{msg}");
         assert!(!msg.contains("download failed"), "{msg}");
+    }
+
+    #[test]
+    fn fetch_selects_a_skill_under_a_dot_directory() {
+        // Hidden directories (names starting with `.`) are scanned like any
+        // other: a skill may legitimately live under `.agents/`.
+        let body = tarball(
+            "skills-main",
+            &[(
+                ".agents/pdf/SKILL.md",
+                "---\nname: pdf\ndescription: hidden\n---\nbody",
+                0o644,
+            )],
+            &[],
+        );
+        let (get, _urls) = fake_get(&[FORM_HEAD], body);
+        let (tmp, skill) = fetch_skill_with("acme", "skills", "pdf", None, &get)
+            .unwrap()
+            .expect("a skill under a dot-directory should match");
+        assert_eq!(skill.name, "pdf");
+        assert_eq!(skill.description, "hidden");
+        assert_eq!(skill.dir, tmp.path().join("skills/.agents/pdf"));
     }
 
     #[test]

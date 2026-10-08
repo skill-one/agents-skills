@@ -2,8 +2,8 @@
 //!
 //! The canonical dir (`~/.agents/skills`) is the single source of truth:
 //! [`install_skill`] writes real files there and nowhere else. Agent
-//! integration is a separate concern handled by [`crate::core::link`]. Copies skip
-//! metadata.json/.git/__pycache__/__pypackages__.
+//! integration is a separate concern handled by [`crate::core::link`]. Copies are
+//! verbatim: a skill's directory is reproduced as-is.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -163,26 +163,20 @@ fn paths_overlap(a: &Path, b: &Path) -> bool {
     path_contains(a, b) || path_contains(b, a)
 }
 
-/// Recursively copy a directory, excluding metadata.json / .git / __pycache__ / __pypackages__,
-/// dereferencing symlinks (copying target contents).
+/// Recursively copy a directory verbatim, dereferencing symlinks (copying
+/// target contents). Nothing is filtered: the skill's directory is reproduced
+/// as-is, hidden entries included.
 pub fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
     fs::create_dir_all(dest)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
-        let name = entry.file_name().to_string_lossy().into_owned();
         let src_path = entry.path();
-        let dest_path = dest.join(&name);
+        let dest_path = dest.join(entry.file_name());
 
         let meta = entry.metadata()?;
         if meta.is_dir() {
-            if name == ".git" || name == "__pycache__" || name == "__pypackages__" {
-                continue;
-            }
             copy_directory(&src_path, &dest_path)?;
         } else if meta.is_file() {
-            if name == "metadata.json" {
-                continue;
-            }
             fs::copy(&src_path, &dest_path)?;
         }
     }
@@ -834,7 +828,9 @@ mod tests {
     }
 
     #[test]
-    fn copy_directory_excludes_ignored() {
+    fn copy_directory_copies_everything_verbatim() {
+        // Nothing is filtered: every file and nested directory is reproduced,
+        // hidden entries included.
         let tmp = tempfile::TempDir::new().unwrap();
         let src = tmp.path().join("src");
         fs::create_dir_all(src.join(".git")).unwrap();
@@ -846,9 +842,9 @@ mod tests {
         let dest = tmp.path().join("dest");
         copy_directory(&src, &dest).unwrap();
         assert!(dest.join("SKILL.md").exists());
-        assert!(!dest.join("metadata.json").exists());
-        assert!(!dest.join(".git").exists());
-        assert!(!dest.join("__pycache__").exists());
+        assert!(dest.join("metadata.json").exists());
+        assert!(dest.join(".git/HEAD").exists());
+        assert!(dest.join("__pycache__").exists());
     }
 
     #[test]
